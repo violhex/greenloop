@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GREENLOOP — done is an exit code</title>
-<meta name="description" content="GREENLOOP is a state-machine execution workflow for AI coding agents — Claude Code, Cursor, Windsurf, Aider and more. One curl installs it for 16 agent targets. Done means the verification harness exits 0. Works pasted into a bare chat, too.">
+<title>GREENLOOP: done is an exit code</title>
+<meta name="description" content="GREENLOOP is a state-machine execution workflow for AI coding agents: Claude Code, Cursor, Windsurf, Aider and more. One curl installs it for 16 agent targets. Done means the verification harness exits 0. Works pasted into a bare chat, too.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -144,7 +144,7 @@
     <p class="eyebrow">GREENLOOP v2.3.0 · workflow for coding agents · MIT</p>
     <h1>Done is an<br>exit&nbsp;code.</h1>
     <p class="lede">GREENLOOP is a state-machine execution workflow you hand to any AI coding
-    agent — Claude&nbsp;Code, Cursor, Windsurf, Aider, local models. It makes the agent
+    agent: Claude&nbsp;Code, Cursor, Windsurf, Aider, local models. It makes the agent
     persist its state, converge before it edits, test its own assumptions, and refuse
     to call anything finished until a verification harness says so.</p>
 
@@ -162,21 +162,21 @@
     <p class="sub">They're process failures: the agent forgets what it decided, keeps
     expanding options instead of committing to one, or executes a plan built on an
     assumption nobody tested. GREENLOOP installs three disciplines against exactly
-    those three failures — and every rule scales with the task, so a typo fix runs a
+    those three failures. Every rule scales with the task, so a typo fix runs a
     compressed pass while destructive work gets full ceremony plus your confirmation.</p>
     <div class="grid3">
       <div class="law">
         <div class="tag">S</div>
         <h3>The State Law</h3>
         <p>Every decision, assumption, failure, and verification result is persisted to
-        <code>.greenloop/</code> — state, plan, memory, worklog. If it exists only in
+        <code>.greenloop/</code>: state, plan, memory, worklog. If it exists only in
         context, it does not exist. Sessions resume from disk, not recollection.</p>
         <p class="kills">kills: context loss, amnesia between sessions</p>
       </div>
       <div class="law">
         <div class="tag">C</div>
         <h3>Convergence Machine</h3>
-        <p>Three cognitive states — ORBITING → CONTACT → LOCK_IN. No edit or irreversible
+        <p>Three cognitive states: ORBITING → CONTACT → LOCK_IN. No edit or irreversible
         action until the agent can write a falsifiable <code>DONE WHEN</code>. Branch
         pressure checks force a choice when options multiply without progress.</p>
         <p class="kills">kills: orbiting, premature execution</p>
@@ -184,7 +184,7 @@
       <div class="law">
         <div class="tag">R</div>
         <h3>Reality Calibration</h3>
-        <p>Assumptions live in a market — each with confidence, evidence, and a
+        <p>Assumptions live in a market, each with confidence, evidence, and a
         <em>falsifier</em>. The load-bearing one gets tested first. Beliefs expire.
         The DoD is checked against your original words, so the goal can't quietly drift.</p>
         <p class="kills">kills: confidently wrong, goal corruption</p>
@@ -205,7 +205,7 @@
       <div class="step"><div>
         <h3>Bind your agents</h3>
         <p>Run <code>greenloop</code> inside any repo. It detects which agents you use and
-        writes each one's native binding — <code>CLAUDE.md</code> import plus enforcement
+        writes each one's native binding: <code>CLAUDE.md</code> import plus enforcement
         hooks, <code>.cursor/rules</code>, <code>AGENTS.md</code>, sixteen targets in all.
         Re-running upgrades in place; existing files are merged or backed up, never clobbered.</p>
       </div></div>
@@ -216,10 +216,10 @@
       </div></div>
     </div>
     <pre class="tree">repo/
-├── <b>GREENLOOP.md</b>                  <i>the workflow — contract, S/C/R, phases 0–10</i>
+├── <b>GREENLOOP.md</b>                  <i>the workflow: contract, S/C/R, phases 0–10</i>
 ├── <b>GREENLOOP-APPENDICES.md</b>       <i>orchestration, no-tools mode, role library</i>
 ├── <b>greenloop.state.schema.json</b>   <i>copy to .greenloop/state.json to start</i>
-├── <b>GREENLOOP-PROFILE-DESIGN.md</b>   <i>domain profile — activates on visual tasks</i>
+├── <b>GREENLOOP-PROFILE-DESIGN.md</b>   <i>domain profile, activates on visual tasks</i>
 ├── <b>AGENTS.md</b>                     <i>universal binding (marker block)</i>
 └── <b>.greenloop/</b>                   <i>state · plan · memory · worklog</i></pre>
   </section>
@@ -254,13 +254,13 @@
     <h2 id="enf">Instructions persuade. Hooks enforce.</h2>
     <p class="sub">On Claude Code, GREENLOOP optionally installs two gates that don't
     depend on the model's obedience at all:</p>
-    <p><strong>PreToolUse gate</strong> — file edits are blocked until
+    <p><strong>PreToolUse gate:</strong> file edits are blocked until
     <code>.greenloop/state.json</code> exists, so Phase 1 can't be skipped.
-    <br><strong>Stop gate</strong> — the session can't end while
+    <br><strong>Stop gate:</strong> the session can't end while
     <code>scripts/verify.sh</code> exits non-zero. "Continue till green" becomes a
     property of the system, not a hope.</p>
     <blockquote>GREEN = every Definition-of-Done item satisfied AND every harness check
-    passes AND no known unresolved error remains in scope. Mechanically verifiable —
+    passes AND no known unresolved error remains in scope. Mechanically verifiable:
     "looks correct" is never GREEN.</blockquote>
   </section>
 
@@ -286,7 +286,7 @@
   <section aria-labelledby="field">
     <p class="eyebrow">Field test · no install, no tools</p>
     <h2 id="field">It works pasted into a chat box.</h2>
-    <p class="sub">GREENLOOP is instructions, not software — so its minimum viable
+    <p class="sub">GREENLOOP is instructions, not software, so its minimum viable
     deployment is paste. This condensed transcript comes from exactly that:
     <code>GREENLOOP.md</code> dropped into a plain ChatGPT tab with a web-design idea.
     No injection, no hooks, no tools. The workflow still governed the session:</p>
@@ -295,13 +295,13 @@
       <div class="turn">
         <div class="who">User · chatgpt.com</div>
         <p>“Here's GREENLOOP.md. I want a site with the delivery and feel of a
-        high-end Framer site — animated icons, motion, clean typography — and it
+        high-end Framer site (animated icons, motion, clean typography), and it
         should take style changes that equally match.”</p>
       </div>
       <div class="turn">
         <div class="who agent">Agent · Phase 2 → 4, before any code</div>
-        <p>Refused to copy pixels. Reconstructed the upper layers first — the
-        constraints that <em>caused</em> the reference to emerge — and returned the
+        <p>Refused to copy pixels. Reconstructed the upper layers first, the
+        constraints that <em>caused</em> the reference to emerge, and returned the
         chain as the deliverable:</p>
         <p class="chain">artifact → structure → rules → constraints → <b>intent</b><br>
         ├ tokens.json&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--dim)">scales inferred, not pixels copied</span><br>
@@ -312,13 +312,13 @@
       <div class="turn">
         <div class="who agent">Agent · the Vision Lock</div>
         <p>“No component may be implemented until the visual, motion, interaction,
-        and emotional systems it expresses are explicitly described.” — which is
+        and emotional systems it expresses are explicitly described.” That is
         GREENLOOP's <em>no execution from ORBITING</em>, wearing design clothes. The
         constitution it wrote is the spec you carry to whichever agent builds it.</p>
       </div>
     </div>
     <p class="pin">That session is now a shipped companion:
-    <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">GREENLOOP-PROFILE-DESIGN.md</a> — the first
+    <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">GREENLOOP-PROFILE-DESIGN.md</a>, the first
     domain profile. Five-level extraction (visual → component → motion → emotional →
     contradiction), the design constitution, judges with motion-language and
     accessibility lenses, and a falsifiable design GREEN. Drop it next to
@@ -329,21 +329,21 @@
     <p class="eyebrow">Get the files</p>
     <h2 id="get">Plain files. No lock-in.</h2>
     <p class="sub">Everything is markdown, JSON, and one TypeScript file. Read them
-    before you run them — that's the point.</p>
+    before you run them. That's the point.</p>
     <div class="files">
       <a href="workflow/GREENLOOP.md">workflow/GREENLOOP.md<small>the core workflow, ~730 lines</small></a>
       <a href="workflow/GREENLOOP-APPENDICES.md">workflow/GREENLOOP-APPENDICES.md<small>orchestration · no-tools mode · role library</small></a>
-      <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">workflow/GREENLOOP-PROFILE-DESIGN.md<small>domain profile: design — extraction → constitution → design GREEN</small></a>
+      <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">workflow/GREENLOOP-PROFILE-DESIGN.md<small>design domain profile: extraction → constitution → design GREEN</small></a>
       <a href="workflow/greenloop.state.schema.json">workflow/greenloop.state.schema.json<small>copy-to-initialize state template</small></a>
-      <a href="cli/greenloop-inject.ts">cli/greenloop-inject.ts<small>the CLI — detection, bindings, TUI</small></a>
-      <a href="install.sh">install.sh<small>this page's installer — read it first</small></a>
+      <a href="cli/greenloop-inject.ts">cli/greenloop-inject.ts<small>the CLI: detection, bindings, TUI</small></a>
+      <a href="install.sh">install.sh<small>this page's installer, read it first</small></a>
     </div>
 
     <h2 style="margin-top:56px">Questions people ask.</h2>
     <details>
       <summary>Isn't this a lot of process?</summary>
-      <p>Only when the task earns it. Phase 1 classifies every task — TRIVIAL,
-      STANDARD, COMPLEX, HAZARDOUS — and the workflow compresses to match: a typo fix
+      <p>Only when the task earns it. Phase 1 classifies every task as TRIVIAL,
+      STANDARD, COMPLEX, or HAZARDOUS, and the workflow compresses to match: a typo fix
       collapses the review gates into a 30-second self-check, while destructive or
       security-relevant work runs everything plus an explicit confirmation from you.
       Effort is also budgeted up front; crossing 75% of a budget forces a compressed
@@ -352,7 +352,7 @@
     </details>
     <details>
       <summary>Is it safe to run in an existing repo?</summary>
-      <p>Yes — by construction. Shared files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>,
+      <p>Yes, by construction. Shared files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>,
       settings) get a marker-delimited block; your content is untouched. Files GREENLOOP
       doesn't recognize are backed up to <code>.bak</code> before replacement. Nothing is
       ever deleted, and re-running is a no-op until a new version ships.</p>
@@ -361,12 +361,12 @@
       <summary>What does the CLI need to run?</summary>
       <p><a href="https://bun.sh">Bun</a> for the full TUI (auto-installs its one
       dependency), or npx as a fallback. The <code>--repo</code> install mode needs
-      nothing but <code>sh</code> and curl — it's how you bring GREENLOOP to a CI box
+      nothing but <code>sh</code> and curl; it's how you bring GREENLOOP to a CI box
       or a bare container.</p>
     </details>
     <details>
       <summary>Can I change the workflow?</summary>
-      <p>Please do. <code>GREENLOOP.md</code> is the single source of truth — edit it,
+      <p>Please do. <code>GREENLOOP.md</code> is the single source of truth. Edit it,
       version it with your repo, and your agents pick up the change on their next run.
       Fork the whole site, point <code>install.sh</code> at your domain, and you've
       shipped your team's edition.</p>
@@ -374,7 +374,7 @@
     <details>
       <summary>How do I remove it?</summary>
       <p><code>… | sh -s -- --uninstall</code> removes the CLI and
-      <code>~/.greenloop</code>. Per-repo files are left for you to delete — they're
+      <code>~/.greenloop</code>. Per-repo files are left for you to delete; they're
       your audit trail.</p>
     </details>
   </section>
