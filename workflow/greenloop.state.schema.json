@@ -1,0 +1,58 @@
+{
+  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.3.0). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
+
+  "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
+  "goal": "",
+  "scope_fence": "",
+  "constraints": [],
+
+  "dod": [
+    { "id": "D1", "check": "", "status": "pending|pass|fail", "evidence": "" }
+  ],
+
+  "assumptions": [
+    {
+      "assumption": "",
+      "confidence": 0.0,
+      "evidence": [],
+      "falsifier": "<cheapest test that would prove this wrong (R1)>",
+      "impact_if_false": "low|medium|destroys_plan",
+      "status": "active|confirmed|falsified|expired",
+      "validated_at": "<timestamp or action-count>"
+    }
+  ],
+
+  "phase": "TRIAGE|SPEC|RETRIEVE|MODEL|PLAN|JUDGE|HARNESS|EXECUTE|VERIFY|REPORT",
+
+  "steps": [
+    { "id": "S1", "desc": "", "verify": "", "status": "todo|doing|done|failed", "owner": "main|<subagent>" }
+  ],
+
+  "failures": [
+    { "step": "", "error": "", "attempts": 0, "rca": "", "resolution": "" }
+  ],
+
+  "decisions": [
+    { "what": "", "why": "", "alternatives_rejected": "", "confidence": 0.0, "made_at": "" }
+  ],
+
+  "blocked": [
+    { "question": "", "default_taken": "" }
+  ],
+
+  "budgets": {
+    "tool_calls": { "limit": 0, "used": 0 },
+    "judge_rounds": { "limit": 3, "used": 0 },
+    "mode": "normal|compressed"
+  },
+
+  "convergence": {
+    "state": "ORBITING|CONTACT|LOCK_IN",
+    "target": "",
+    "done_when": "",
+    "active_branches": [],
+    "parked_branches": []
+  },
+
+  "verification": { "command": "", "last_run": "", "result": "", "green": false }
+}

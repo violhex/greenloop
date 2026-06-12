@@ -1,0 +1,78 @@
+# ══════════════════════════════════════════════════════════════════════
+# GREENLOOP .gitignore
+# Leading "/" anchors a pattern to the repository root; patterns without
+# it match at any depth. Trailing "/" matches directories only.
+# ══════════════════════════════════════════════════════════════════════
+
+# ── private research material — must NEVER be published ────────────────
+# Scraped social/community study data (Reddit threads, vendor articles).
+# Contains third-party usernames and verbatim posts; local reference only.
+/internal/
+
+# ── secrets & environment ───────────────────────────────────────────────
+# Defense in depth: this repo needs no env files or keys, so anything
+# matching these patterns is a mistake — keep it out of history.
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+id_rsa
+id_ed25519
+*.token
+credentials.json
+service-account*.json
+secrets.*
+.netrc
+.npmrc
+
+# ── GREENLOOP runtime state ─────────────────────────────────────────────
+# Created by Phase 1 when an agent works *in* this repo. It is a local
+# audit trail (state.json, plan.md, memory.md, worklog.md); only commit
+# it deliberately, never by default.
+.greenloop/
+
+# ── installer / injector artifacts ──────────────────────────────────────
+# Backups written before any file replacement (install.sh `place()`,
+# greenloop-inject.ts marker merges).
+*.bak
+
+# ── JavaScript runtime artifacts ────────────────────────────────────────
+# Running the TUI (`bun greenloop-inject.ts`) auto-installs @opentui/core,
+# which creates these next to the script. The repo itself has no deps.
+node_modules/
+bun.lockb
+bun.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ── editor & OS noise ───────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# ── logs & scratch ──────────────────────────────────────────────────────
+*.log
+*.tmp
+/tmp/
+/scratch/
+
+# ── legacy file locations ───────────────────────────────────────────────
+# Pre-reorganization copies kept on disk for reference. The canonical,
+# maintained versions live in workflow/, cli/, and docs/. These three
+# entries match ONLY the root-level originals, not the new directories.
+/src/
+/greenloop-inject.ts
+/DEPLOY.md

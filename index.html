@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GREENLOOP — done is an exit code</title>
+<meta name="description" content="GREENLOOP is a state-machine execution workflow for AI coding agents — Claude Code, Cursor, Windsurf, Aider and more. One curl. Every agent. Verified done. Works pasted into a bare chat, too.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAFBF6; --bar:#E4EFE2; --ink:#1E2722; --green:#0A7A3F;
+    --green-deep:#075C30; --red:#B23A2A; --dim:#66766C; --rule:#CBD8CC;
+    --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --sheet:920px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+  body{background:var(--bar);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.65}
+
+  /* ── the printout sheet with sprocket rails ─────────────────────────── */
+  .sheet{max-width:var(--sheet);margin:0 auto;background:var(--paper);position:relative;
+    box-shadow:0 0 0 1px var(--rule),0 24px 60px rgba(30,39,34,.10)}
+  .sheet::before,.sheet::after{content:"";position:absolute;top:0;bottom:0;width:34px;
+    background:
+      radial-gradient(circle 5px at 17px 18px, var(--bar) 5px, transparent 5.5px) ,
+      linear-gradient(var(--paper),var(--paper));
+    background-size:34px 44px;background-repeat:repeat-y;border-right:1px dashed var(--rule)}
+  .sheet::before{left:0}
+  .sheet::after{right:0;border-right:none;border-left:1px dashed var(--rule)}
+  section,header.hero,footer{padding:64px 88px}
+  .band{background:var(--bar)}
+  @media (max-width:720px){
+    .sheet::before,.sheet::after{display:none}
+    section,header.hero,footer{padding:48px 22px}
+    body{font-size:16px}
+  }
+
+  /* ── type roles ──────────────────────────────────────────────────────── */
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:18px}
+  h1{font-family:var(--mono);font-weight:700;font-size:clamp(34px,6vw,58px);line-height:1.06;letter-spacing:-.015em}
+  h2{font-family:var(--mono);font-weight:600;font-size:clamp(21px,3vw,27px);margin-bottom:8px;letter-spacing:-.01em}
+  h3{font-family:var(--mono);font-weight:600;font-size:16px;margin-bottom:6px}
+  .lede{font-size:19px;max-width:58ch;margin-top:20px;color:#36443C}
+  .sub{color:var(--dim);max-width:62ch;margin-bottom:34px}
+  p{max-width:68ch}
+  a{color:var(--green-deep);text-decoration-thickness:1px;text-underline-offset:3px}
+  a:hover{color:var(--green)}
+  :focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:2px}
+  code{font-family:var(--mono);font-size:.92em;background:var(--bar);padding:.1em .35em;border-radius:3px}
+  .band code{background:var(--paper)}
+
+  /* ── hero ────────────────────────────────────────────────────────────── */
+  .hero{padding-top:84px;padding-bottom:72px;position:relative}
+  .stamp{position:absolute;top:74px;right:84px;font-family:var(--mono);font-weight:700;
+    color:var(--green);border:3px solid var(--green);border-radius:6px;padding:8px 14px;
+    font-size:14px;letter-spacing:.1em;transform:rotate(6deg);opacity:.92;
+    animation:stamp .5s cubic-bezier(.2,1.6,.4,1) .3s both;
+    -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.7'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)' opacity='.92'/%3E%3C/svg%3E");
+    mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.7'/%3E%3C/filter%3E%3Crect width='80' height='80' filter='url(%23n)' opacity='.92'/%3E%3C/svg%3E")}
+  @keyframes stamp{from{transform:rotate(6deg) scale(2.2);opacity:0}to{transform:rotate(6deg) scale(1);opacity:.92}}
+  @media (max-width:860px){.stamp{position:static;display:inline-block;margin-bottom:26px}}
+
+  /* ── command blocks ──────────────────────────────────────────────────── */
+  .cmd{display:flex;align-items:stretch;margin:30px 0 10px;border:1px solid var(--ink);
+    background:#FFFFFE;font-family:var(--mono);font-size:15px;max-width:680px}
+  .cmd pre{padding:15px 18px;overflow-x:auto;flex:1;line-height:1.5}
+  .cmd .p{color:var(--dim);user-select:none}
+  .cmd button{font-family:var(--mono);font-size:12.5px;letter-spacing:.06em;border:none;
+    border-left:1px solid var(--ink);background:var(--ink);color:var(--paper);
+    padding:0 18px;cursor:pointer;min-width:84px}
+  .cmd button:hover{background:var(--green-deep)}
+  .cmd button.copied{background:var(--green)}
+  .alt{font-family:var(--mono);font-size:13.5px;color:var(--dim);margin-top:14px}
+  .alt code{background:transparent;padding:0;color:#41514A}
+
+  /* ── S/C/R cards ─────────────────────────────────────────────────────── */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:34px}
+  @media (max-width:760px){.grid3{grid-template-columns:1fr}}
+  .law{background:var(--paper);border:1px solid var(--rule);padding:24px 22px}
+  .law .tag{font-family:var(--mono);font-weight:700;font-size:30px;color:var(--green);line-height:1}
+  .law h3{margin-top:12px}
+  .law p{font-size:15.5px;color:#36443C}
+  .law .kills{font-family:var(--mono);font-size:12px;color:var(--red);margin-top:14px;letter-spacing:.04em}
+
+  /* ── quickstart ──────────────────────────────────────────────────────── */
+  .steps{counter-reset:s;margin-top:26px}
+  .step{display:grid;grid-template-columns:54px 1fr;gap:18px;padding:20px 0;border-top:1px solid var(--rule)}
+  .step:last-child{border-bottom:1px solid var(--rule)}
+  .step::before{counter-increment:s;content:"0" counter(s);font-family:var(--mono);font-weight:700;font-size:22px;color:var(--green)}
+  .tree{font-family:var(--mono);font-size:13.5px;line-height:1.8;background:#FFFFFE;border:1px solid var(--rule);padding:18px 22px;margin-top:26px;overflow-x:auto;color:#36443C}
+  .tree b{color:var(--ink);font-weight:600}
+  .tree i{color:var(--dim);font-style:normal}
+
+  /* ── agent inventory ─────────────────────────────────────────────────── */
+  .inv{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:1px;
+    background:var(--rule);border:1px solid var(--rule);margin-top:30px}
+  .inv div{background:var(--paper);padding:13px 15px;font-family:var(--mono);font-size:13.5px}
+  .inv div span{display:block;color:var(--dim);font-size:11.5px;margin-top:3px}
+
+  /* ── run log ─────────────────────────────────────────────────────────── */
+  .log{font-family:var(--mono);font-size:13.5px;line-height:2.05;margin-top:28px;overflow-x:auto;white-space:nowrap}
+  .log .t{color:var(--dim)}
+  .log .ph{color:var(--green-deep);font-weight:600}
+  .log .ok{color:var(--green);font-weight:700}
+  .log div{border-bottom:1px dotted var(--rule)}
+
+  blockquote{border-left:3px solid var(--green);padding:6px 0 6px 22px;margin:28px 0;
+    font-family:var(--mono);font-size:15px;max-width:64ch;color:#2A3630}
+
+  /* ── files & faq ─────────────────────────────────────────────────────── */
+  .files{display:grid;grid-template-columns:1fr 1fr;gap:14px 40px;margin-top:26px;max-width:720px}
+  @media (max-width:640px){.files{grid-template-columns:1fr}}
+  .files a{font-family:var(--mono);font-size:14.5px;display:block;padding:11px 0;border-bottom:1px solid var(--rule);text-decoration:none}
+  .files a small{display:block;font-family:var(--sans);color:var(--dim);font-size:13px;margin-top:2px}
+  details{border-top:1px solid var(--rule);padding:16px 0;max-width:68ch}
+  details:last-of-type{border-bottom:1px solid var(--rule)}
+  summary{font-family:var(--mono);font-size:15px;font-weight:600;cursor:pointer}
+  details p{margin-top:10px;font-size:15.5px;color:#36443C}
+
+  /* ── field test transcript ───────────────────────────────────────────── */
+  .transcript{border:1px solid var(--rule);background:#FFFFFE;margin-top:30px;max-width:760px}
+  .transcript .turn{padding:18px 22px;border-bottom:1px dashed var(--rule)}
+  .transcript .turn:last-child{border-bottom:none}
+  .transcript .who{font-family:var(--mono);font-size:11.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .transcript .who.agent{color:var(--green-deep)}
+  .transcript p{font-size:15px;color:#36443C}
+  .transcript .chain{font-family:var(--mono);font-size:13px;line-height:1.9;color:var(--ink);margin-top:8px}
+  .transcript .chain b{color:var(--green-deep);font-weight:600}
+  .pin{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:12px;max-width:760px}
+  footer{font-family:var(--mono);font-size:13px;color:var(--dim);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .skip{position:absolute;left:-9999px}.skip:focus{left:22px;top:12px;background:var(--ink);color:var(--paper);padding:8px 14px;z-index:9}
+</style>
+</head>
+<body>
+<a class="skip" href="#install">Skip to install</a>
+<div class="sheet">
+
+  <header class="hero">
+    <div class="stamp" aria-hidden="true">GREEN ✓ EXIT 0</div>
+    <p class="eyebrow">GREENLOOP v2.3.0 · workflow for coding agents · MIT</p>
+    <h1>Done is an<br>exit&nbsp;code.</h1>
+    <p class="lede">GREENLOOP is a state-machine execution workflow you hand to any AI coding
+    agent — Claude&nbsp;Code, Cursor, Windsurf, Aider, local models. It makes the agent
+    persist its state, converge before it edits, test its own assumptions, and refuse
+    to call anything finished until a verification harness says so.</p>
+
+    <div class="cmd" id="install">
+      <pre><span class="p">$ </span><span id="curlcmd">curl -fsSL https://violhex.github.io/greenloop/install.sh | sh</span></pre>
+      <button data-copy="curlcmd" aria-label="Copy install command">COPY</button>
+    </div>
+    <p class="alt">Inject this repo only, no CLI: <code>… | sh -s -- --repo</code>
+    &nbsp;·&nbsp; both: <code>--all</code> &nbsp;·&nbsp; remove: <code>--uninstall</code></p>
+  </header>
+
+  <section class="band" aria-labelledby="why">
+    <p class="eyebrow">Why it exists</p>
+    <h2 id="why">Agents don't fail at writing code.</h2>
+    <p class="sub">They forget what they decided, expand options without committing, and
+    converge confidently on the wrong reality. GREENLOOP installs three disciplines
+    against exactly those three failures.</p>
+    <div class="grid3">
+      <div class="law">
+        <div class="tag">S</div>
+        <h3>The State Law</h3>
+        <p>Every decision, assumption, failure, and verification result is persisted to
+        <code>.greenloop/</code> — state, plan, memory, worklog. If it exists only in
+        context, it does not exist. Sessions resume from disk, not recollection.</p>
+        <p class="kills">kills: context loss, amnesia between sessions</p>
+      </div>
+      <div class="law">
+        <div class="tag">C</div>
+        <h3>Convergence Machine</h3>
+        <p>Three cognitive states — ORBITING → CONTACT → LOCK_IN. No edit or irreversible
+        action until the agent can write a falsifiable <code>DONE WHEN</code>. Branch
+        pressure checks force a choice when options multiply without progress.</p>
+        <p class="kills">kills: orbiting, premature execution</p>
+      </div>
+      <div class="law">
+        <div class="tag">R</div>
+        <h3>Reality Calibration</h3>
+        <p>Assumptions live in a market — each with confidence, evidence, and a
+        <em>falsifier</em>. The load-bearing one gets tested first. Beliefs expire.
+        The DoD is checked against your original words, so the goal can't quietly drift.</p>
+        <p class="kills">kills: confidently wrong, goal corruption</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="qs">
+    <p class="eyebrow">Quickstart</p>
+    <h2 id="qs">Three steps to green.</h2>
+    <div class="steps">
+      <div class="step"><div>
+        <h3>Install</h3>
+        <p>Run the curl above. It fetches the workflow files, verifies checksums, and
+        installs a <code>greenloop</code> command (runs on <a href="https://bun.sh">Bun</a>,
+        falls back to npx).</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Bind your agents</h3>
+        <p>Run <code>greenloop</code> inside any repo. It detects which agents you use and
+        writes each one's native binding — <code>CLAUDE.md</code> import plus enforcement
+        hooks, <code>.cursor/rules</code>, <code>AGENTS.md</code>, sixteen targets in all.
+        Re-running upgrades in place; existing files are merged or backed up, never clobbered.</p>
+      </div></div>
+      <div class="step"><div>
+        <h3>Give your agent a task</h3>
+        <p>Phase 1 initializes <code>.greenloop/</code> and the loop runs until the
+        harness exits 0. The worklog is your audit trail.</p>
+      </div></div>
+    </div>
+    <pre class="tree">repo/
+├── <b>GREENLOOP.md</b>                  <i>the workflow — contract, S/C/R, phases 0–10</i>
+├── <b>GREENLOOP-APPENDICES.md</b>       <i>orchestration, no-tools mode, role library</i>
+├── <b>greenloop.state.schema.json</b>   <i>copy to .greenloop/state.json to start</i>
+├── <b>GREENLOOP-PROFILE-DESIGN.md</b>   <i>domain profile — activates on visual tasks</i>
+├── <b>AGENTS.md</b>                     <i>universal binding (marker block)</i>
+└── <b>.greenloop/</b>                   <i>state · plan · memory · worklog</i></pre>
+  </section>
+
+  <section class="band" aria-labelledby="agents">
+    <p class="eyebrow">Inventory</p>
+    <h2 id="agents">Works with what you already run.</h2>
+    <p class="sub">Each target gets its native instruction channel. Anything not listed
+    still reads the universal <code>AGENTS.md</code> binding.</p>
+    <div class="inv">
+      <div>Claude Code<span>CLAUDE.md + hooks</span></div>
+      <div>Cursor<span>.cursor/rules (always-apply)</span></div>
+      <div>Windsurf<span>.windsurf/rules</span></div>
+      <div>Aider<span>.aider.conf.yml read-list</span></div>
+      <div>Cline<span>.clinerules</span></div>
+      <div>Roo Code<span>.roo/rules</span></div>
+      <div>Continue<span>.continue/rules</span></div>
+      <div>GitHub Copilot<span>copilot-instructions.md</span></div>
+      <div>OpenAI Codex CLI<span>AGENTS.md</span></div>
+      <div>Gemini CLI<span>GEMINI.md</span></div>
+      <div>OpenCode<span>AGENTS.md</span></div>
+      <div>Zed<span>.rules</span></div>
+      <div>JetBrains Junie<span>.junie/guidelines.md</span></div>
+      <div>OpenHands<span>.openhands/microagents</span></div>
+      <div>Local LLMs<span>system-prompt rendition</span></div>
+      <div>Everything else<span>AGENTS.md convention</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="enf">
+    <p class="eyebrow">Enforcement</p>
+    <h2 id="enf">Instructions persuade. Hooks enforce.</h2>
+    <p class="sub">On Claude Code, GREENLOOP optionally installs two gates that don't
+    depend on the model's obedience at all:</p>
+    <p><strong>PreToolUse gate</strong> — file edits are blocked until
+    <code>.greenloop/state.json</code> exists, so Phase 1 can't be skipped.
+    <br><strong>Stop gate</strong> — the session can't end while
+    <code>scripts/verify.sh</code> exits non-zero. "Continue till green" becomes a
+    property of the system, not a hope.</p>
+    <blockquote>GREEN = every Definition-of-Done item satisfied AND every harness check
+    passes AND no known unresolved error remains in scope. Mechanically verifiable —
+    "looks correct" is never GREEN.</blockquote>
+  </section>
+
+  <section class="band" aria-labelledby="run">
+    <p class="eyebrow">The run</p>
+    <h2 id="run">One task, end to end.</h2>
+    <div class="log" role="img" aria-label="Example worklog showing all eleven phases completing and ending in GREEN">
+      <div><span class="t">[00:00]</span> <span class="ph">PHASE 0 · CONTRACT</span>   read; State Law in effect</div>
+      <div><span class="t">[00:01]</span> <span class="ph">PHASE 1 · TRIAGE</span>     env fingerprinted · docs labeled TRUSTED/STALE · budgets set</div>
+      <div><span class="t">[00:03]</span> <span class="ph">PHASE 2 · SPEC</span>       user_request stored verbatim · DoD D1–D5 falsifiable</div>
+      <div><span class="t">[00:05]</span> <span class="ph">PHASE 3 · RETRIEVE</span>   broad → deep → working set in memory.md</div>
+      <div><span class="t">[00:08]</span> <span class="ph">PHASE 4 · MODEL</span>      domain entities + invariants typed first</div>
+      <div><span class="t">[00:10]</span> <span class="ph">PHASE 5 · PLAN</span>       7 steps, each with a verification hook</div>
+      <div><span class="t">[00:12]</span> <span class="ph">PHASE 6 · JUDGE</span>      Architect / Critic / Red Team → PASS</div>
+      <div><span class="t">[00:14]</span> <span class="ph">PHASE 7 · HARNESS</span>    scripts/verify.sh wired · failing tests written first</div>
+      <div><span class="t">[00:15]</span> <span class="ph">PHASE 8 · EXECUTE</span>    S1–S7 · 1 failure → RCA → assumption falsified → fixed</div>
+      <div><span class="t">[00:41]</span> <span class="ph">PHASE 9 · VERIFY</span>     full harness clean + adversarial pass, same iteration</div>
+      <div><span class="t">[00:43]</span> <span class="ph">PHASE 10 · REPORT</span>    rendered from state, not memory</div>
+      <div><span class="t">[00:43]</span> <span class="ok">STATUS: GREEN ✓ exit 0</span></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="field">
+    <p class="eyebrow">Field test · no install, no tools</p>
+    <h2 id="field">It works pasted into a chat box.</h2>
+    <p class="sub">GREENLOOP is instructions, not software — so its minimum viable
+    deployment is paste. A community member dropped <code>GREENLOOP.md</code> into a
+    plain ChatGPT tab with a web-design idea. No injection, no hooks, someone else's
+    product. The workflow still governed the session:</p>
+
+    <div class="transcript" role="group" aria-label="Condensed transcript of GREENLOOP running in a plain chat">
+      <div class="turn">
+        <div class="who">User · chatgpt.com</div>
+        <p>“Here's GREENLOOP.md. I want a site with the delivery and feel of a
+        high-end Framer site — animated icons, motion, clean typography — and it
+        should take style changes that equally match.”</p>
+      </div>
+      <div class="turn">
+        <div class="who agent">Agent · Phase 2 → 4, before any code</div>
+        <p>Refused to copy pixels. Reconstructed the upper layers first — the
+        constraints that <em>caused</em> the reference to emerge — and returned the
+        chain as the deliverable:</p>
+        <p class="chain">artifact → structure → rules → constraints → <b>intent</b><br>
+        ├ tokens.json&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--dim)">scales inferred, not pixels copied</span><br>
+        ├ motion-spec.md&nbsp;&nbsp;<span style="color:var(--dim)">reveal: y 24→0 · 600ms · stagger 80ms</span><br>
+        ├ component-spec.md&nbsp;<span style="color:var(--dim)">shared rules = evidence of a system</span><br>
+        └ brand-spec.md&nbsp;&nbsp;&nbsp;<span style="color:var(--dim)">the feeling + what was deliberately NOT done</span></p>
+      </div>
+      <div class="turn">
+        <div class="who agent">Agent · the Vision Lock</div>
+        <p>“No component may be implemented until the visual, motion, interaction,
+        and emotional systems it expresses are explicitly described.” — which is
+        GREENLOOP's <em>no execution from ORBITING</em>, wearing design clothes. The
+        constitution it wrote is the spec you carry to whichever agent builds it.</p>
+      </div>
+    </div>
+    <p class="pin">That session is now a shipped companion:
+    <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">GREENLOOP-PROFILE-DESIGN.md</a> — the first
+    domain profile. Five-level extraction (visual → component → motion → emotional →
+    contradiction), the design constitution, judges with motion-language and
+    accessibility lenses, and a falsifiable design GREEN. Drop it next to
+    GREENLOOP.md; it activates when the task is visual.</p>
+  </section>
+
+  <section class="band" aria-labelledby="get">
+    <p class="eyebrow">Get the files</p>
+    <h2 id="get">Plain files. No lock-in.</h2>
+    <p class="sub">Everything is markdown, JSON, and one TypeScript file. Read them
+    before you run them — that's the point.</p>
+    <div class="files">
+      <a href="workflow/GREENLOOP.md">workflow/GREENLOOP.md<small>the core workflow, ~730 lines</small></a>
+      <a href="workflow/GREENLOOP-APPENDICES.md">workflow/GREENLOOP-APPENDICES.md<small>orchestration · no-tools mode · role library</small></a>
+      <a href="workflow/GREENLOOP-PROFILE-DESIGN.md">workflow/GREENLOOP-PROFILE-DESIGN.md<small>domain profile: design — extraction → constitution → design GREEN</small></a>
+      <a href="workflow/greenloop.state.schema.json">workflow/greenloop.state.schema.json<small>copy-to-initialize state template</small></a>
+      <a href="cli/greenloop-inject.ts">cli/greenloop-inject.ts<small>the CLI — detection, bindings, TUI</small></a>
+      <a href="install.sh">install.sh<small>this page's installer — read it first</small></a>
+    </div>
+
+    <h2 style="margin-top:56px">Questions people ask.</h2>
+    <details>
+      <summary>Is it safe to run in an existing repo?</summary>
+      <p>Yes — by construction. Shared files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>,
+      settings) get a marker-delimited block; your content is untouched. Files GREENLOOP
+      doesn't recognize are backed up to <code>.bak</code> before replacement. Nothing is
+      ever deleted, and re-running is a no-op until a new version ships.</p>
+    </details>
+    <details>
+      <summary>What does the CLI need to run?</summary>
+      <p><a href="https://bun.sh">Bun</a> for the full TUI (auto-installs its one
+      dependency), or npx as a fallback. The <code>--repo</code> install mode needs
+      nothing but <code>sh</code> and curl — it's how you bring GREENLOOP to a CI box
+      or a bare container.</p>
+    </details>
+    <details>
+      <summary>Can I change the workflow?</summary>
+      <p>Please do. <code>GREENLOOP.md</code> is the single source of truth — edit it,
+      version it with your repo, and your agents pick up the change on their next run.
+      Fork the whole site, point <code>install.sh</code> at your domain, and you've
+      shipped your team's edition.</p>
+    </details>
+    <details>
+      <summary>How do I remove it?</summary>
+      <p><code>… | sh -s -- --uninstall</code> removes the CLI and
+      <code>~/.greenloop</code>. Per-repo files are left for you to delete — they're
+      your audit trail.</p>
+    </details>
+  </section>
+
+  <footer>
+    <span>GREENLOOP · MIT · fork it, translate it, ship it</span>
+    <span><a href="https://github.com/violhex/greenloop">source</a> · by <a href="https://github.com/violhex">violhex</a></span>
+  </footer>
+</div>
+
+<script>
+  // The displayed install command always matches wherever this page is hosted,
+  // so every fork's docs are automatically correct.
+  (function(){
+    var base = location.origin + location.pathname.replace(/index\.html?$/,'');
+    if (location.protocol.indexOf('http') === 0)
+      document.getElementById('curlcmd').textContent = 'curl -fsSL ' + base + 'install.sh | sh';
+    document.querySelectorAll('button[data-copy]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var text = document.getElementById(btn.dataset.copy).textContent;
+        navigator.clipboard.writeText(text).then(function(){
+          btn.textContent = 'COPIED ✓'; btn.classList.add('copied');
+          setTimeout(function(){ btn.textContent='COPY'; btn.classList.remove('copied'); }, 1600);
+        });
+      });
+    });
+  })();
+</script>
+</body>
+</html>
