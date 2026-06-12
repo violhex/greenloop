@@ -6,6 +6,11 @@
 {
   "name": "greenloop",
   "compatibility_date": "2026-06-12",
+  // The workers.dev route IS the canonical install URL — keep it on.
+  "workers_dev": true,
+  // One canonical URL only; per-deployment preview URLs would just be
+  // confusing extra copies of the installer endpoint.
+  "preview_urls": false,
   "assets": {
     "directory": "./"
   }
