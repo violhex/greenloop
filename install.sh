@@ -3,7 +3,7 @@
 # GREENLOOP installer — https://github.com/violhex/greenloop
 # Author: violhex (https://github.com/violhex) · MIT
 #
-#   curl -fsSL https://violhex.github.io/greenloop/install.sh | sh
+#   curl -fsSL https://greenloop.violhex.workers.dev/install.sh | sh
 #
 # Modes (pass after `sh -s --`):
 #   (none)        install the `greenloop` CLI                  [default]
@@ -27,7 +27,7 @@
 set -eu
 
 VERSION="2.3.0"
-BASE_URL="${GREENLOOP_BASE_URL:-https://violhex.github.io/greenloop}"
+BASE_URL="${GREENLOOP_BASE_URL:-https://greenloop.violhex.workers.dev}"
 GL_HOME="${GREENLOOP_HOME:-$HOME/.greenloop}"
 BIN_DIR="${GREENLOOP_BIN:-$HOME/.local/bin}"
 # Repo layout: workflow files live under workflow/, the CLI under cli/.

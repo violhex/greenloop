@@ -1,0 +1,20 @@
+# Files wrangler must NEVER upload as site assets.
+# Matters most for local `wrangler deploy`, where gitignored files exist on
+# disk (CI clones only contain tracked files, but belt and suspenders).
+.git
+.gitignore
+.assetsignore
+wrangler.jsonc
+node_modules
+
+# private local material (also gitignored)
+internal
+post.txt
+.env
+.env.*
+*.bak
+
+# legacy root-level copies (canonical versions live in workflow/, cli/, docs/)
+/src
+/DEPLOY.md
+/greenloop-inject.ts

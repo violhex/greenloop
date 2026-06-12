@@ -1,0 +1,12 @@
+// Cloudflare Workers configuration — serves this repository as a static site.
+// Assets-only (no Worker script): every file in the repo root is served as-is,
+// minus the exclusions in .assetsignore. Deploy with `npx wrangler deploy` or
+// connect the repo in the Cloudflare dashboard (Workers Builds) for
+// auto-deploy on every push. See docs/DEPLOY.md.
+{
+  "name": "greenloop",
+  "compatibility_date": "2026-06-12",
+  "assets": {
+    "directory": "./"
+  }
+}

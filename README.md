@@ -8,7 +8,7 @@ state, converge before it edits, test its own assumptions, and refuse to call
 anything finished until a verification harness says so.
 
 ```sh
-curl -fsSL https://violhex.github.io/greenloop/install.sh | sh
+curl -fsSL https://greenloop.violhex.workers.dev/install.sh | sh
 ```
 
 Inject the current repo only (no CLI, pure shell): `… | sh -s -- --repo` ·
@@ -29,8 +29,9 @@ The full contract, the ten phases, and GREEN itself live in
 
 ```
 greenloop/
-├── index.html       docs site (GitHub Pages entry point)
+├── index.html       docs site (served at the site root)
 ├── install.sh       POSIX installer — curl | sh target, stays at site root
+├── wrangler.jsonc   Cloudflare Workers config — serves the repo as the site
 ├── SHA256SUMS       integrity manifest verified by install.sh
 ├── workflow/        the workflow files agents read
 │   ├── GREENLOOP.md                  core workflow — contract, S/C/R, phases 0–10
