@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GREENLOOP — done is an exit code</title>
-<meta name="description" content="GREENLOOP is a state-machine execution workflow for AI coding agents — Claude Code, Cursor, Windsurf, Aider and more. One curl. Every agent. Verified done. Works pasted into a bare chat, too.">
+<meta name="description" content="GREENLOOP is a state-machine execution workflow for AI coding agents — Claude Code, Cursor, Windsurf, Aider and more. One curl installs it for 16 agent targets. Done means the verification harness exits 0. Works pasted into a bare chat, too.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
@@ -158,10 +158,12 @@
 
   <section class="band" aria-labelledby="why">
     <p class="eyebrow">Why it exists</p>
-    <h2 id="why">Agents don't fail at writing code.</h2>
-    <p class="sub">They forget what they decided, expand options without committing, and
-    converge confidently on the wrong reality. GREENLOOP installs three disciplines
-    against exactly those three failures.</p>
+    <h2 id="why">Most agent failures aren't code failures.</h2>
+    <p class="sub">They're process failures: the agent forgets what it decided, keeps
+    expanding options instead of committing to one, or executes a plan built on an
+    assumption nobody tested. GREENLOOP installs three disciplines against exactly
+    those three failures — and every rule scales with the task, so a typo fix runs a
+    compressed pass while destructive work gets full ceremony plus your confirmation.</p>
     <div class="grid3">
       <div class="law">
         <div class="tag">S</div>
@@ -263,7 +265,7 @@
   </section>
 
   <section class="band" aria-labelledby="run">
-    <p class="eyebrow">The run</p>
+    <p class="eyebrow">An example run</p>
     <h2 id="run">One task, end to end.</h2>
     <div class="log" role="img" aria-label="Example worklog showing all eleven phases completing and ending in GREEN">
       <div><span class="t">[00:00]</span> <span class="ph">PHASE 0 · CONTRACT</span>   read; State Law in effect</div>
@@ -285,9 +287,9 @@
     <p class="eyebrow">Field test · no install, no tools</p>
     <h2 id="field">It works pasted into a chat box.</h2>
     <p class="sub">GREENLOOP is instructions, not software — so its minimum viable
-    deployment is paste. A community member dropped <code>GREENLOOP.md</code> into a
-    plain ChatGPT tab with a web-design idea. No injection, no hooks, someone else's
-    product. The workflow still governed the session:</p>
+    deployment is paste. This condensed transcript comes from exactly that:
+    <code>GREENLOOP.md</code> dropped into a plain ChatGPT tab with a web-design idea.
+    No injection, no hooks, no tools. The workflow still governed the session:</p>
 
     <div class="transcript" role="group" aria-label="Condensed transcript of GREENLOOP running in a plain chat">
       <div class="turn">
@@ -338,6 +340,16 @@
     </div>
 
     <h2 style="margin-top:56px">Questions people ask.</h2>
+    <details>
+      <summary>Isn't this a lot of process?</summary>
+      <p>Only when the task earns it. Phase 1 classifies every task — TRIVIAL,
+      STANDARD, COMPLEX, HAZARDOUS — and the workflow compresses to match: a typo fix
+      collapses the review gates into a 30-second self-check, while destructive or
+      security-relevant work runs everything plus an explicit confirmation from you.
+      Effort is also budgeted up front; crossing 75% of a budget forces a compressed
+      mode instead of letting the agent polish forever. The ceremony is a dial, not
+      a constant.</p>
+    </details>
     <details>
       <summary>Is it safe to run in an existing repo?</summary>
       <p>Yes — by construction. Shared files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>,

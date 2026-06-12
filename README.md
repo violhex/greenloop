@@ -57,6 +57,9 @@ via the universal `AGENTS.md` convention. Sixteen targets in all; run
 
 ## Safety, by construction
 
+- **Proportional** — every task is triaged (TRIVIAL → HAZARDOUS) and the workflow
+  compresses to match: a typo fix runs a 30-second self-check, destructive work
+  requires explicit user confirmation. Effort is budgeted, not unbounded.
 - **Idempotent** — re-running upgrades in place, never duplicates.
 - **Non-destructive** — shared files get marker-delimited blocks; unrecognized files
   are backed up to `.bak` before replacement. Nothing is ever deleted.

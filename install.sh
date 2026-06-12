@@ -166,6 +166,8 @@ Non-negotiables that apply even before you read it:
 4. After 3 failed fixes of the same error: stop, write a root-cause analysis
    naming the wrong assumption. After 5: revert and change approach.
 5. Resume from state, not memory — read \`.greenloop/state.json\` first.
+   Assumptions inherited from a prior session are suspect until
+   re-validated — never build on them unverified.
 PTR
 }
 

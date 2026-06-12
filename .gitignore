@@ -69,6 +69,10 @@ Desktop.ini
 /tmp/
 /scratch/
 
+# ── personal drafts — never publish ─────────────────────────────────────
+# Announcement / social post drafts. Local only.
+/post.txt
+
 # ── legacy file locations ───────────────────────────────────────────────
 # Pre-reorganization copies kept on disk for reference. The canonical,
 # maintained versions live in workflow/, cli/, and docs/. These three

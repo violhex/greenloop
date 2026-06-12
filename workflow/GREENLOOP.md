@@ -148,7 +148,11 @@ EVIDENCE: AssertionError: expected 3 calls, got 4 (full output in run)
   Each phase below names its state writes — they are not optional.
 - **Resume from state, not from memory.** On any session start, context compaction, or
   sub-agent spawn: read `state.json` first, then only the `memory.md` working set. If
-  state and your recollection disagree, state wins.
+  state and your recollection disagree, state wins. And inherited beliefs arrive
+  stale, not certain: a prior session hands you its assumptions, never its
+  certainty — before building anything load-bearing on a resumed assumption,
+  re-price it per R4 (run its falsifier). Persistent state without re-validation
+  is how agents drift on yesterday's reality.
 - **Sub-agents inherit state, return state.** A sub-agent receives the relevant slice
   (goal, DoD, its steps, working-set excerpt) and returns a structured result that the
   orchestrator merges into state. Sub-agent context dies; its state contribution doesn't.
