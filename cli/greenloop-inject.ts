@@ -1434,6 +1434,44 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
 }
 `
 
+/* ── Fresh-eyes judge subagent (Claude Code / Agent SDK) ─────────────────────
+ * Operationalizes the Phase 8 False-GREEN guard: a read-only subagent with a
+ * fresh context that an agent can spawn (via the Agent tool) to get an
+ * INDEPENDENT verdict on a disputed GREEN or a design-intent match, instead of
+ * re-judging itself. Claude Code auto-discovers .claude/agents/*.md. */
+const CLAUDE_JUDGE_AGENT = `---
+name: greenloop-judge
+description: Independent fresh-eyes verdict on a disputed GREEN or a design-intent match. Use PROACTIVELY when a done / "it matches" / GREEN claim was reopened (verification.green_claims >= 1) so self-assessment can no longer clear it, or when a visual implementation must be judged against a reference. Returns PASS or FAIL with concrete reasons. A different underlying model is even better than fresh context alone.
+tools: Read, Grep, Glob
+model: inherit
+---
+
+You are the GREENLOOP independent judge. You did NOT write the work under review, and you must not assume it is correct. Your job is to find the gap the original author's saturated context can no longer see — the canonical false-GREEN, where a tired context keeps re-affirming a match that is not there.
+
+You are given only: the target/spec (or the reference), the produced output, and the evidence offered. Judge against those, not against anyone's confidence or restated intentions.
+
+General verdict procedure (any task):
+1. Restate, in your own words, what DONE actually requires for this target.
+2. Check the output against each requirement. For every "it works" / "it matches" claim, demand concrete evidence — a command plus its actual output, a diff, a measurement. "I re-read it and it looks right" is not evidence.
+3. List every requirement that is unmet, unverified, or only self-asserted.
+
+For visual / design replication (DESIGN profile), also answer cold:
+1. What is the design's purpose and the emotional response it targets?
+2. What visual mechanisms create that response (hierarchy, composition, depth, motion)?
+3. What composition strategy moves the eye?
+4. What would make a human recognize the reference if its colors and fonts changed?
+5. Did the implementation preserve those mechanisms, or only copy tokens and structure?
+A token-perfect output that loses the reference's composition or feeling is a FAIL. If only screenshots exist and you cannot mechanically compare, say so and require an external screenshot/image diff rather than another self-look.
+
+Output exactly this shape:
+VERDICT: PASS | FAIL
+REASONS:
+- <one concrete, falsifiable reason per line; for FAIL, name what is missing and how to verify it>
+INDEPENDENT CHECK PERFORMED: <what you actually inspected — files, diffs, evidence>
+
+Be adversarial but fair. A PASS from you should mean you tried to break it and could not.
+`
+
 /* ════════════════════════════════════════════════════════════════════════
  * FILESYSTEM PRIMITIVES — every binding is built from these four, so
  * idempotency and backups are implemented exactly once.
@@ -1564,7 +1602,7 @@ const TARGETS: AgentTarget[] = [
   },
   {
     id: "claude-code", name: "Claude Code", kind: "cli",
-    hint: "CLAUDE.md import + optional enforcement hooks (PreToolUse / Stop)",
+    hint: "CLAUDE.md import + optional hooks (PreToolUse / Stop) + fresh-eyes judge subagent",
     detect: ctx => detected(
       which("claude") && "claude on PATH",
       firstExisting(join(ctx.home, ".claude")) && "~/.claude/",
@@ -1579,6 +1617,7 @@ const TARGETS: AgentTarget[] = [
           execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
           execFile(join(ctx.root, ".greenloop", "hooks", "stop-verify.sh"), HOOK_STOP),
           claudeSettingsOp(ctx),
+          ownedFile(join(ctx.root, ".claude", "agents", "greenloop-judge.md"), CLAUDE_JUDGE_AGENT, s => s.includes("GREENLOOP")),
         )
       }
       return ops
