@@ -1,4 +1,4 @@
-# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.1)
+# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.4.0)
 <!-- A domain profile maps the generic GREENLOOP phases onto a specific kind of
      work — it adds domain organs to the same skeleton. The core file always wins
      on conflict. This profile activates when the task is visual: building or

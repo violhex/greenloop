@@ -1,4 +1,4 @@
-# GREENLOOP — Agent Execution Workflow v2.3.1
+# GREENLOOP — Agent Execution Workflow v2.4.0
 <!-- Drop this file into any agentic coding environment (Claude Code, Cursor, Windsurf,
      Aider, OpenHands, custom harnesses) as AGENTS.md, CLAUDE.md, .cursorrules, or a
      referenced instruction file. It is model-agnostic.
@@ -32,6 +32,11 @@
      v2.3.1: DESIGN profile hardened with Intent Preservation Layer,
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
+     v2.4.0: enforcement parity — the OpenCode binding gains a real
+     pre-edit gate (.opencode/plugins/greenloop.ts), and the Claude Code
+     and OpenCode state gates now require a falsifiable DONE WHEN (and,
+     on design tasks, the intent lock) before any project edit — not
+     merely the presence of a state file.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->

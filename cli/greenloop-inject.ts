@@ -21,7 +21,8 @@
  *   --dry-run         plan + print every file op, write nothing
  *   --yes             apply without confirmation (headless)
  *   --agents=a,b,c    restrict to specific target ids (see --list for ids)
- *   --hooks / --no-hooks   enable/disable Claude Code enforcement hooks (default: on)
+ *   --hooks / --no-hooks   enable/disable agent enforcement gates — Claude Code
+ *                          (PreToolUse + Stop) and OpenCode (pre-edit) (default: on)
  *   --dir=PATH        target project root (default: cwd)
  *
  * GUARANTEES:
@@ -39,7 +40,7 @@ import {
 import { join, resolve, delimiter, dirname } from "node:path"
 import { homedir, platform } from "node:os"
 
-const VERSION = "2.3.1"
+const VERSION = "2.4.0"
 const MARK = (id: string) => ({
   begin: `<!-- GREENLOOP:BEGIN ${id} v${VERSION} -->`,
   beginRe: new RegExp(`<!-- GREENLOOP:BEGIN ${id} v[^ ]+ -->`),
@@ -81,7 +82,7 @@ interface AgentTarget {
 
 /* ── embedded payloads (spliced at build time; do not edit inline) ─────── */
 
-const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.3.1
+const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.4.0
 <!-- Drop this file into any agentic coding environment (Claude Code, Cursor, Windsurf,
      Aider, OpenHands, custom harnesses) as AGENTS.md, CLAUDE.md, .cursorrules, or a
      referenced instruction file. It is model-agnostic.
@@ -115,6 +116,11 @@ const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.3.1
      v2.3.1: DESIGN profile hardened with Intent Preservation Layer,
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
+     v2.4.0: enforcement parity — the OpenCode binding gains a real
+     pre-edit gate (.opencode/plugins/greenloop.ts), and the Claude Code
+     and OpenCode state gates now require a falsifiable DONE WHEN (and,
+     on design tasks, the intent lock) before any project edit — not
+     merely the presence of a state file.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
@@ -837,7 +843,7 @@ non-negotiable core of each appendix:
    in every reply. Neither the harness nor the State Law is waived by a missing
    filesystem.`
 
-const GREENLOOP_APPENDICES = `# GREENLOOP — Appendices (companion to GREENLOOP.md v2.3.1)
+const GREENLOOP_APPENDICES = `# GREENLOOP — Appendices (companion to GREENLOOP.md v2.4.0)
 <!-- Place this file next to GREENLOOP.md. The core file references it. If you are an
      agent reading this without the core file, go read GREENLOOP.md first — nothing
      here makes sense without the contract, the State Law, and Sections S/C/R.
@@ -936,7 +942,7 @@ rules for synthesizing your own.
    DevOps rollback lenses plus the fourth-seat option.`
 
 const GREENLOOP_SCHEMA = `{
-  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.3.1). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
+  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.4.0). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
@@ -994,7 +1000,7 @@ const GREENLOOP_SCHEMA = `{
   "verification": { "command": "", "last_run": "", "result": "", "green": false }
 }`
 
-const GREENLOOP_PROFILE_DESIGN = `# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.1)
+const GREENLOOP_PROFILE_DESIGN = `# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.4.0)
 <!-- A domain profile maps the generic GREENLOOP phases onto a specific kind of
      work — it adds domain organs to the same skeleton. The core file always wins
      on conflict. This profile activates when the task is visual: building or
@@ -1259,11 +1265,34 @@ Non-negotiables that apply even before you read it:
 /* ── Claude Code enforcement hooks ─────────────────────────────────────── */
 
 const HOOK_PRETOOL = `#!/bin/sh
-# GREENLOOP PreToolUse gate — blocks file edits until Phase 1 has
-# initialized workflow state. Exit 2 = block, stderr is fed to the agent.
+# GREENLOOP PreToolUse gate — blocks edits to PROJECT files until workflow
+# state exists AND a falsifiable DONE WHEN is locked in (Section C: no
+# execution from ORBITING). Writes into .greenloop/ are always allowed —
+# recording state is how the agent reaches LOCK_IN. On design tasks the
+# Reference Fidelity Lock must precede component code (DESIGN profile P0).
+# Exit 2 = block, stderr is fed back to the agent.
 ROOT="\${CLAUDE_PROJECT_DIR:-.}"
-if [ ! -f "$ROOT/.greenloop/state.json" ]; then
-  echo "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json and populate user_request, DoD, and budgets per GREENLOOP.md." >&2
+INPUT=$(cat)
+
+# Edits to the state layer itself are never blocked.
+FILE=$(printf '%s' "$INPUT" | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
+case "$FILE" in *.greenloop/*|*/.greenloop) exit 0;; esac
+
+STATE="$ROOT/.greenloop/state.json"
+if [ ! -f "$STATE" ]; then
+  echo "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json (via the shell) and populate user_request, DoD, and budgets per GREENLOOP.md." >&2
+  exit 2
+fi
+
+# No execution from ORBITING: require a non-empty convergence.done_when.
+if ! grep -Eq '"done_when"[[:space:]]*:[[:space:]]*"[^"]+"' "$STATE"; then
+  echo "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files." >&2
+  exit 2
+fi
+
+# Design tasks: the Reference Fidelity Lock precedes component code (DESIGN P0).
+if [ -d "$ROOT/.greenloop/design" ] && [ ! -s "$ROOT/.greenloop/design/intent-lock.md" ]; then
+  echo "GREENLOOP: .greenloop/design/ exists but intent-lock.md is empty — write the Reference Fidelity Lock (DESIGN profile P0) before generating component code." >&2
   exit 2
 fi
 exit 0
@@ -1285,6 +1314,73 @@ if ! OUT=$("$VERIFY" 2>&1); then
   exit 2
 fi
 exit 0
+`
+
+/* ── OpenCode enforcement plugin ────────────────────────────────────────────
+ * OpenCode auto-loads TS plugins from .opencode/plugins/. This is OpenCode's
+ * analog of the Claude Code PreToolUse hook: a `tool.execute.before` handler
+ * that THROWS (which blocks the tool call) when an edit to a project file is
+ * attempted before the workflow has reached LOCK_IN. OpenCode exposes no
+ * blocking stop hook, so the Stop/verify gate stays Claude-only. */
+const OPENCODE_PLUGIN = `// GREENLOOP enforcement plugin for OpenCode — pre-edit state gate.
+// Auto-loaded from .opencode/plugins/. Mirrors the Claude Code PreToolUse
+// hook: blocks edits to PROJECT files until .greenloop/state.json exists AND
+// convergence.done_when is non-empty (Section C: no execution from ORBITING).
+// On design tasks the intent lock must precede component code (DESIGN P0).
+// Writes into .greenloop/ are always allowed — recording state is how the
+// agent reaches LOCK_IN. Throwing in tool.execute.before blocks the call.
+// Author: violhex (https://github.com/violhex) · MIT
+import { existsSync, readFileSync, statSync } from "node:fs"
+import { join } from "node:path"
+
+const EDIT_TOOLS = new Set(["write", "edit", "patch", "multiedit"])
+
+function nonEmptyFile(p: string): boolean {
+  try { return statSync(p).size > 0 } catch { return false }
+}
+
+export const GreenloopGate = async ({ directory, worktree }: any) => {
+  const root = directory || worktree || process.cwd()
+  return {
+    "tool.execute.before": async (input: any, output: any) => {
+      if (!input || !EDIT_TOOLS.has(input.tool)) return
+      const args = (output && output.args) || {}
+      const target = String(args.filePath || args.path || args.file || "")
+      // Edits to the state layer itself are never blocked.
+      if (target.includes(".greenloop")) return
+
+      const gl = join(root, ".greenloop")
+      const statePath = join(gl, "state.json")
+      if (!existsSync(statePath)) {
+        throw new Error(
+          "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. " +
+          "Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json and populate " +
+          "user_request, DoD, and budgets per GREENLOOP.md.",
+        )
+      }
+      let state: any
+      try {
+        state = JSON.parse(readFileSync(statePath, "utf8"))
+      } catch {
+        throw new Error("GREENLOOP: .greenloop/state.json is not valid JSON — fix it before editing project files.")
+      }
+      const doneWhen = state && state.convergence && state.convergence.done_when
+      if (typeof doneWhen !== "string" || doneWhen.trim() === "") {
+        throw new Error(
+          "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). " +
+          "Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files.",
+        )
+      }
+      const designDir = join(gl, "design")
+      if (existsSync(designDir) && !nonEmptyFile(join(designDir, "intent-lock.md"))) {
+        throw new Error(
+          "GREENLOOP: .greenloop/design/ exists but intent-lock.md is empty — write the Reference Fidelity Lock " +
+          "(DESIGN profile P0) before generating component code.",
+        )
+      }
+    },
+  }
+}
 `
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1535,12 +1631,22 @@ const TARGETS: AgentTarget[] = [
   },
   {
     id: "opencode", name: "OpenCode", kind: "cli",
-    hint: "AGENTS.md (via universal)",
+    hint: "AGENTS.md + optional enforcement plugin (pre-edit state gate)",
     detect: ctx => detected(
       which("opencode") && "opencode on PATH",
       firstExisting(join(ctx.home, ".config", "opencode")) && "~/.config/opencode/",
+      firstExisting(join(ctx.root, ".opencode")) && ".opencode/ in project",
+      firstExisting(join(ctx.root, "opencode.json"), join(ctx.root, "opencode.jsonc")) && "opencode config in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
+      if (ctx.hooks)
+        ops.push(ownedFile(
+          join(ctx.root, ".opencode", "plugins", "greenloop.ts"),
+          OPENCODE_PLUGIN, s => s.includes("GREENLOOP"),
+        ))
+      return ops
+    },
   },
   {
     id: "zed", name: "Zed", kind: "ide",
@@ -1747,7 +1853,7 @@ async function tui(ctx: Ctx) {
         const ev = s.detection.present ? s.detection.evidence[0] : "not detected — can still pre-seed"
         put(i + 2, ` ${ptr} ${box} ${dot} ${s.target.name.padEnd(38)} ${ev}`)
       })
-      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — Claude Code enforcement (PreToolUse state gate, Stop verify gate)`)
+      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — enforcement gates (Claude Code PreToolUse+Stop · OpenCode pre-edit)`)
       footer.content = " ↑/↓ move · space toggle · a all · n none · h hooks · enter continue · q quit"
     } else if (screen === "plan") {
       put(0, `Plan — ${plan.length} file ops${ctx.dryRun ? "  (DRY RUN: nothing will be written)" : ""}:`)
