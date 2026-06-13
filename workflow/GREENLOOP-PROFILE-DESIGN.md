@@ -1,4 +1,4 @@
-# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.0)
+# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.1)
 <!-- A domain profile maps the generic GREENLOOP phases onto a specific kind of
      work — it adds domain organs to the same skeleton. The core file always wins
      on conflict. This profile activates when the task is visual: building or
@@ -7,7 +7,7 @@
      chat with no tools: paste GREENLOOP.md + this file + your idea.
      Author: violhex (https://github.com/violhex) · MIT -->
 
-## P0. THE PROFILE'S ONE RULE (the Vision Lock)
+## P0. THE PROFILE'S TWO RULES (Vision Lock + Intent Preservation)
 
 A rendered website is the lowest-resolution representation of a chain:
 
@@ -27,6 +27,28 @@ You are not recreating a website. You are recovering the **set of constraints
 that caused the website to emerge**, then generating from those constraints —
 which is why style changes that "equally match" become possible: you change a
 constraint, and everything downstream re-derives.
+
+**Intent Preservation Layer.** A design task is not GREEN because it matched
+colors, fonts, border radii, or component names. It is GREEN only when the
+implementation preserves the reference's *visual argument*: the hierarchy,
+composition strategy, depth system, motion language, emotional target, and
+priority order that make a human recognize the work. Tokens are evidence, not
+the answer. A token-perfect implementation that loses the reference's
+composition or feeling is RED.
+
+Before any component implementation, write a **Reference Fidelity Lock** in
+200 words or fewer:
+
+```
+This design is trying to create <emotional response> for <audience/purpose>.
+It does that through <composition strategy>, <visual priority>, <depth/motion
+mechanisms>, and <restraints/prohibitions>. The implementation will preserve
+those mechanisms by <concrete choices>, and will not reduce the reference to
+<surface tokens>.
+```
+
+If the lock could describe hundreds of sites ("dark docs site with cards and a
+sidebar"), it is not a lock. Return to extraction.
 
 ## P1. Phase 1c remapped — artifacts of design intent
 
@@ -76,7 +98,16 @@ words (precision/focus/speed; calm/elegance/clarity; fluidity/momentum). Every
 ambiguous decision later resolves against these words — they are the profile's
 `user_request`-adjacent intent layer.
 
-**L5 — Contradiction extraction (the hidden layer).** Ask: **what choices were
+**L5 — Composition extraction (how the eye moves).** Describe the page's
+composition strategy in concrete terms: symmetrical or asymmetrical, image-led
+or text-led, layered or flat, dense or spacious, centered or editorial, static
+or cinematic. Record visual priority order (`imagery > headline > body`,
+`nav > content`, etc.), focal points, overlap, perspective, depth, and the role
+of empty space. If the reference depends on screenshots, product imagery,
+angled frames, glow, parallax, or layered cards, those are core mechanisms, not
+decorations.
+
+**L6 — Contradiction extraction (the hidden layer).** Ask: **what choices were
 NOT made?** No bright colors. No sharp corners. Nothing rotates. Nothing bounces.
 No dense layouts. Absences are constraints, and constraints carry more of the
 original vision than anything visible. Record them as prohibitions — they are
@@ -93,14 +124,20 @@ artifacts every later phase consumes (the design form of `memory.md`):
     tokens.json        # L1 output — scales, palette, radii, shadows, surfaces
     motion-spec.md     # L3 output — hover/reveal/scroll/page/micro, with numbers
     component-spec.md  # L2 output — per-class rules referencing tokens
-    brand-spec.md      # L4 + L5 — emotional words + the prohibition list
+    intent-lock.md     # Reference Fidelity Lock — the design's visual argument
+    composition-spec.md # L5 output — visual priority, depth, framing, layout logic
+    brand-spec.md      # L4 + L6 — emotional words + the prohibition list
 ```
 
 Constitution discipline:
 
 - Every component spec references tokens by name, never by raw value.
 - Every motion references the motion spec, never inline ad-hoc timing.
-- The prohibition list (L5) is part of the constitution — violating an absence
+- Every layout/component decision traces to intent-lock.md and
+  composition-spec.md. If the reference is image-led, layered, asymmetric, or
+  cinematic, a plain text/card layout is not an acceptable simplification unless
+  the constitution explicitly says why.
+- The prohibition list (L6) is part of the constitution — violating an absence
   is as RED as violating a rule.
 - Restyle requests are handled at this layer: change the constitution, re-derive
   components. Never patch pixels against the constitution's grain.
@@ -115,6 +152,16 @@ concrete (which tokens, which motion rules, which prohibitions).
 
 - **Architect** + *Layout System lens*: grid, breakpoints, container widths,
   alignment rules — does the structure encode the same system as the tokens?
+- **Design Intent Judge** (required for visual tasks): does the implementation
+  preserve the reference's visual argument? It asks:
+  1. What is the design's purpose?
+  2. What emotional response is it trying to create?
+  3. What visual mechanisms create that response?
+  4. What composition strategy moves the eye?
+  5. What would make users recognize the reference if colors and fonts changed?
+  6. Did the implementation preserve those mechanisms, or did it only copy
+     tokens and structure?
+  A FAIL from this judge blocks GREEN even if tests, build, and token lint pass.
 - **Critic** + *Brand Fidelity lens*: does each component evoke the L4 words?
   The naive question becomes "why does this move?" — motion without a reason in
   the motion spec fails review.
@@ -132,11 +179,19 @@ The harness, in order of value (degrade gracefully to what your environment has)
    raw hexes off-palette; zero findings is a DoD item.
 2. **Motion conformance** — every transition/animation traces to a motion-spec
    rule (a comment reference or a shared constant; ad-hoc timings fail).
-3. **Breakpoint render** — the page renders at the constitution's breakpoints
+3. **Composition conformance** — the rendered page is walked against
+   intent-lock.md and composition-spec.md: visual priority, depth, overlap,
+   imagery-vs-text balance, focal points, and empty-space rules. If the
+   reference's identity depends on image-led/layered composition, placeholder
+   gradients or generic cards fail unless explicitly allowed by the constitution.
+4. **Reference recognition check** — state what a human should recognize about
+   the reference without naming the source. If the answer is only "dark,
+   purple, sidebar, cards," the check fails; those are surface tokens.
+5. **Breakpoint render** — the page renders at the constitution's breakpoints
    without overflow or collapse (screenshot or manual walk).
-4. **Accessibility checks** — contrast, keyboard, reduced-motion (axe/Lighthouse
+6. **Accessibility checks** — contrast, keyboard, reduced-motion (axe/Lighthouse
    where available; the checklist where not).
-5. **Constitution walk** — with no tools at all, the minimum harness is walking
+7. **Constitution walk** — with no tools at all, the minimum harness is walking
    every component against component-spec.md and the prohibition list, recording
    each check in the worklog. The State Law does not care that the artifact is
    visual.
@@ -146,14 +201,22 @@ The harness, in order of value (degrade gracefully to what your environment has)
 ```
 [ ] D1: tokens.json exists; all spacing/type/color in components reference it
 [ ] D2: zero `transition: all` and zero off-spec timings (token linter clean)
-[ ] D3: renders at 360/768/1280 without horizontal overflow
-[ ] D4: contrast ≥ 4.5:1 body, 3:1 large; reduced-motion media query present
-[ ] D5: zero violations of the L5 prohibition list
+[ ] D3: intent-lock.md states the visual philosophy in ≤200 words and is specific
+         enough that it could not describe a generic site
+[ ] D4: composition-spec.md defines visual priority, depth, focal points, and
+         imagery-vs-text balance; implementation matches it
+[ ] D5: reference recognition check passes with mechanisms, not tokens
+[ ] D6: renders at 360/768/1280 without horizontal overflow
+[ ] D7: contrast ≥ 4.5:1 body, 3:1 large; reduced-motion media query present
+[ ] D8: zero violations of the L6 prohibition list
 ```
 
-**Phase 9 adversarial addition:** re-run L5 against your own output — *did the
+**Phase 9 adversarial addition:** re-run L6 against your own output — *did the
 implementation introduce anything the constitution forbids?* The most common
 design regression is a contradiction violation, because nothing visible breaks.
+Then run the Design Intent Judge cold from only {reference screenshots,
+intent-lock.md, composition-spec.md, rendered output}. If it says the output
+preserved structure but not design language, the task is RED.
 
 ## P6. Single-prompt mode (the field test)
 

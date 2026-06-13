@@ -1,4 +1,4 @@
-# GREENLOOP — Agent Execution Workflow v2.3.0
+# GREENLOOP — Agent Execution Workflow v2.3.1
 <!-- Drop this file into any agentic coding environment (Claude Code, Cursor, Windsurf,
      Aider, OpenHands, custom harnesses) as AGENTS.md, CLAUDE.md, .cursorrules, or a
      referenced instruction file. It is model-agnostic.
@@ -29,6 +29,9 @@
      v2.3.0: domain profiles introduced (GREENLOOP-PROFILE-*.md) — first
      profile: DESIGN (five-level extraction, design constitution, Vision
      Lock); contradiction analysis added to Phase 4.
+     v2.3.1: DESIGN profile hardened with Intent Preservation Layer,
+     Reference Fidelity Lock, composition conformance, and required
+     Design Intent Judge.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->

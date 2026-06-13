@@ -1,4 +1,4 @@
-# GREENLOOP — Appendices (companion to GREENLOOP.md v2.3.0)
+# GREENLOOP — Appendices (companion to GREENLOOP.md v2.3.1)
 <!-- Place this file next to GREENLOOP.md. The core file references it. If you are an
      agent reading this without the core file, go read GREENLOOP.md first — nothing
      here makes sense without the contract, the State Law, and Sections S/C/R.

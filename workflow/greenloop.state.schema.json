@@ -1,5 +1,5 @@
 {
-  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.3.0). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
+  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.3.1). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",

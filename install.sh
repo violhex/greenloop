@@ -26,7 +26,7 @@
 # ════════════════════════════════════════════════════════════════════════
 set -eu
 
-VERSION="2.3.0"
+VERSION="2.3.1"
 BASE_URL="${GREENLOOP_BASE_URL:-https://greenloop.violhex.workers.dev}"
 GL_HOME="${GREENLOOP_HOME:-$HOME/.greenloop}"
 BIN_DIR="${GREENLOOP_BIN:-$HOME/.local/bin}"
