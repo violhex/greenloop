@@ -33,11 +33,12 @@
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
      v2.4.0: enforcement parity — the OpenCode binding gains a real
-     pre-edit gate (.opencode/plugins/greenloop.ts); the Claude Code and
-     OpenCode state gates require a falsifiable DONE WHEN (and, on design
-     tasks, the intent lock) before any project edit; a False-GREEN guard
-     forces an independent verdict after a reopened GREEN claim; and a
-     greenloop verify fallback harness gives the Stop gate teeth.
+     pre-edit gate (.opencode/plugins/greenloop.ts); the same DONE WHEN
+     (and, on design tasks, intent lock) pre-edit gate now extends to
+     Claude Code, Codex, and Gemini CLI via their hook layers; a
+     False-GREEN guard forces an independent verdict after a reopened
+     GREEN claim; and a greenloop verify fallback harness gives the Stop
+     gate teeth.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->

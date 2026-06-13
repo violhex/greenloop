@@ -22,7 +22,7 @@
  *   --yes             apply without confirmation (headless)
  *   --agents=a,b,c    restrict to specific target ids (see --list for ids)
  *   --hooks / --no-hooks   enable/disable agent enforcement gates — Claude Code
- *                          (PreToolUse + Stop) and OpenCode (pre-edit) (default: on)
+ *                          (PreToolUse+Stop), OpenCode, Codex, Gemini (default: on)
  *   --dir=PATH        target project root (default: cwd)
  *
  * GUARANTEES:
@@ -118,11 +118,12 @@ const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.4.0
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
      v2.4.0: enforcement parity — the OpenCode binding gains a real
-     pre-edit gate (.opencode/plugins/greenloop.ts); the Claude Code and
-     OpenCode state gates require a falsifiable DONE WHEN (and, on design
-     tasks, the intent lock) before any project edit; a False-GREEN guard
-     forces an independent verdict after a reopened GREEN claim; and a
-     greenloop verify fallback harness gives the Stop gate teeth.
+     pre-edit gate (.opencode/plugins/greenloop.ts); the same DONE WHEN
+     (and, on design tasks, intent lock) pre-edit gate now extends to
+     Claude Code, Codex, and Gemini CLI via their hook layers; a
+     False-GREEN guard forces an independent verdict after a reopened
+     GREEN claim; and a greenloop verify fallback harness gives the Stop
+     gate teeth.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
@@ -1292,18 +1293,30 @@ Non-negotiables that apply even before you read it:
 /* ── Claude Code enforcement hooks ─────────────────────────────────────── */
 
 const HOOK_PRETOOL = `#!/bin/sh
-# GREENLOOP PreToolUse gate — blocks edits to PROJECT files until workflow
-# state exists AND a falsifiable DONE WHEN is locked in (Section C: no
-# execution from ORBITING). Writes into .greenloop/ are always allowed —
+# GREENLOOP pre-edit gate — harness-agnostic (Claude Code PreToolUse, Codex
+# PreToolUse, Gemini CLI BeforeTool). Blocks edits to PROJECT files until
+# workflow state exists AND a falsifiable DONE WHEN is locked in (Section C:
+# no execution from ORBITING). Writes into .greenloop/ are always allowed —
 # recording state is how the agent reaches LOCK_IN. On design tasks the
 # Reference Fidelity Lock must precede component code (DESIGN profile P0).
-# Exit 2 = block, stderr is fed back to the agent.
-ROOT="\${CLAUDE_PROJECT_DIR:-.}"
+# Block protocol shared by all three: exit 2 + reason on stderr.
 INPUT=$(cat)
+ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  ROOT=$(printf '%s' "$INPUT" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
+  [ -z "$ROOT" ] && ROOT="."
+fi
 
-# Edits to the state layer itself are never blocked.
-FILE=$(printf '%s' "$INPUT" | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
-case "$FILE" in *.greenloop/*|*/.greenloop) exit 0;; esac
+# Target paths arrive as "file_path" (Claude Code, Gemini) or as apply_patch
+# markers (Codex). Edits whose targets are all inside .greenloop/ are state
+# work and are never blocked.
+TARGETS=$(
+  printf '%s' "$INPUT" | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/'
+  printf '%s' "$INPUT" | grep -oE '\\*\\*\\* (Add|Update|Delete) File: [^"\\\\]+' | sed -E 's/^[^:]*: //'
+)
+if [ -n "$TARGETS" ] && ! printf '%s\\n' "$TARGETS" | grep -qvE '(^|/)\\.greenloop/'; then
+  exit 0
+fi
 
 STATE="$ROOT/.greenloop/state.json"
 if [ ! -f "$STATE" ]; then
@@ -1651,21 +1664,37 @@ const TARGETS: AgentTarget[] = [
   },
   {
     id: "gemini", name: "Gemini CLI", kind: "cli",
-    hint: "GEMINI.md (marker block)",
+    hint: "GEMINI.md + optional BeforeTool enforcement gate",
     detect: ctx => detected(
       which("gemini") && "gemini on PATH",
       firstExisting(join(ctx.home, ".gemini")) && "~/.gemini/",
+      firstExisting(join(ctx.root, ".gemini")) && ".gemini/ in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())]
+      if (ctx.hooks) ops.push(
+        execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        geminiSettingsOp(ctx),
+      )
+      return ops
+    },
   },
   {
     id: "codex", name: "OpenAI Codex CLI", kind: "cli",
-    hint: "AGENTS.md (via universal) — detection only confirms reach",
+    hint: "AGENTS.md + optional PreToolUse enforcement gate",
     detect: ctx => detected(
       which("codex") && "codex on PATH",
       firstExisting(join(ctx.home, ".codex")) && "~/.codex/",
+      firstExisting(join(ctx.root, ".codex")) && ".codex/ in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
+      if (ctx.hooks) ops.push(
+        execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        codexHooksOp(ctx),
+      )
+      return ops
+    },
   },
   {
     id: "opencode", name: "OpenCode", kind: "cli",
@@ -1763,6 +1792,49 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
   const next = build(cur)
   if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hooks already wired", write: () => {} }
   return { path, action: "merge", detail: "hooks merged into existing settings", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
+}
+
+/** .codex/hooks.json — Codex PreToolUse gate. matcher "Edit|Write" covers
+ *  apply_patch file edits; Codex blocks on exit 2 + stderr, same as the gate.
+ *  JSON merge that adds our hook without disturbing existing ones. */
+function codexHooksOp(ctx: Ctx): FileOp {
+  const path = join(ctx.root, ".codex", "hooks.json")
+  const entry = { matcher: "Edit|Write", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/pretool-gate.sh` }] }
+  const build = (cfg: any) => {
+    cfg.hooks ??= {}
+    cfg.hooks.PreToolUse ??= []
+    if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.PreToolUse.push(entry)
+    return JSON.stringify(cfg, null, 2) + "\n"
+  }
+  if (!existsSync(path))
+    return { path, action: "create", detail: "PreToolUse state gate (review/trust via /hooks)", write: () => { ensureDirFor(path); writeFileSync(path, build({})) } }
+  let cur: any
+  try { cur = JSON.parse(readFileSync(path, "utf8")) }
+  catch { return { path, action: "noop", detail: "SKIPPED — hooks.json is not valid JSON; add hook manually", write: () => {} } }
+  const next = build(cur)
+  if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hook already wired", write: () => {} }
+  return { path, action: "merge", detail: "PreToolUse gate merged (review/trust via /hooks)", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
+}
+
+/** .gemini/settings.json — Gemini CLI BeforeTool gate. matcher matches the
+ *  edit tools; Gemini blocks on exit 2 + stderr. JSON merge into settings. */
+function geminiSettingsOp(ctx: Ctx): FileOp {
+  const path = join(ctx.root, ".gemini", "settings.json")
+  const entry = { matcher: "write_file|replace|edit", hooks: [{ name: "greenloop-gate", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const build = (cfg: any) => {
+    cfg.hooks ??= {}
+    cfg.hooks.BeforeTool ??= []
+    if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.BeforeTool.push(entry)
+    return JSON.stringify(cfg, null, 2) + "\n"
+  }
+  if (!existsSync(path))
+    return { path, action: "create", detail: "BeforeTool state gate", write: () => { ensureDirFor(path); writeFileSync(path, build({})) } }
+  let cur: any
+  try { cur = JSON.parse(readFileSync(path, "utf8")) }
+  catch { return { path, action: "noop", detail: "SKIPPED — settings.json is not valid JSON; add hook manually", write: () => {} } }
+  const next = build(cur)
+  if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hook already wired", write: () => {} }
+  return { path, action: "merge", detail: "BeforeTool gate merged into existing settings", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
 }
 
 /** .aider.conf.yml — conservative YAML-lite merge. We only handle the two
@@ -1891,7 +1963,7 @@ async function tui(ctx: Ctx) {
         const ev = s.detection.present ? s.detection.evidence[0] : "not detected — can still pre-seed"
         put(i + 2, ` ${ptr} ${box} ${dot} ${s.target.name.padEnd(38)} ${ev}`)
       })
-      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — enforcement gates (Claude Code PreToolUse+Stop · OpenCode pre-edit)`)
+      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — pre-edit gates (Claude/OpenCode/Codex/Gemini) + Claude Stop`)
       footer.content = " ↑/↓ move · space toggle · a all · n none · h hooks · enter continue · q quit"
     } else if (screen === "plan") {
       put(0, `Plan — ${plan.length} file ops${ctx.dryRun ? "  (DRY RUN: nothing will be written)" : ""}:`)
