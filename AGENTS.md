@@ -11,9 +11,12 @@ scripts. Repo layout and the release process are documented in `README.md` and
 `docs/DEPLOY.md`; don't duplicate them here.
 
 ### Runtimes
-- **`bun`** is the canonical runtime (the CLI shebang is `#!/usr/bin/env bun`). It is
-  installed to `~/.bun/bin` and is on `PATH` for login shells (the env update script
-  installs it if missing). The TUI auto-installs `@opentui/core` on first run.
+- **`bun`** is the canonical runtime (the shebang in `cli/greenloop-inject.ts` is
+  `#!/usr/bin/env bun`). It is installed to `~/.bun/bin` and is on `PATH` for login
+  shells (the env update script installs it if missing). Bun auto-installs
+  `@opentui/core` the first time the TUI runs — it is a lazy `import("@opentui/core")`
+  in `cli/greenloop-inject.ts` (Bun's install-on-import behavior, noted in that file's
+  header), not something GREENLOOP installs itself.
 - **Fallback:** the installed `greenloop` shim and the CLI also run under
   `npx -y tsx cli/greenloop-inject.ts ...`, which works with the pre-installed Node 22
   for headless commands when `bun` is unavailable.
@@ -37,7 +40,10 @@ scripts. Repo layout and the release process are documented in `README.md` and
   `SHA256SUMS` before installing.
 
 ### Release integrity
-The `VERSION` string must stay in lockstep across `install.sh`,
-`workflow/GREENLOOP.md`, and `cli/greenloop-inject.ts`, and `SHA256SUMS` must be
-regenerated after any change to `workflow/*` or `cli/greenloop-inject.ts`. See
-`docs/DEPLOY.md` for the exact `sha256sum` command.
+Two separate rules (see `docs/DEPLOY.md` for the exact commands):
+- **VERSION string:** the same `VERSION` value must appear in `install.sh`,
+  `workflow/GREENLOOP.md`, and `cli/greenloop-inject.ts` — these three stay in lockstep.
+- **`SHA256SUMS`:** this is the generated checksums file, not a version file.
+  Regenerate it (re-run the `sha256sum` command) after any change to `workflow/*` or
+  `cli/greenloop-inject.ts`. `VERSION` is not part of `SHA256SUMS`; `SHA256SUMS` is a
+  checksum artifact that must be refreshed after those edits.
