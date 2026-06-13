@@ -60,6 +60,7 @@ download_all() {
     fetch "$BASE_URL/workflow/$f" "$TMP/workflow/$f" || die "failed to download workflow/$f — check GREENLOOP_BASE_URL"
   done
   fetch "$BASE_URL/cli/greenloop-inject.ts" "$TMP/cli/greenloop-inject.ts" || die "failed to download cli/greenloop-inject.ts — check GREENLOOP_BASE_URL"
+  fetch "$BASE_URL/cli/greenloop-mcp.ts" "$TMP/cli/greenloop-mcp.ts" || die "failed to download cli/greenloop-mcp.ts — check GREENLOOP_BASE_URL"
   # Best-effort integrity check: verify if SHA256SUMS is published and a
   # checksum tool exists; warn (don't fail) if neither is available.
   if fetch "$BASE_URL/SHA256SUMS" "$TMP/SHA256SUMS" 2>/dev/null; then
@@ -95,6 +96,7 @@ install_cli() {
   say "Installing the greenloop CLI"
   mkdir -p "$GL_HOME/bin" "$BIN_DIR"
   place "$TMP/cli/greenloop-inject.ts" "$GL_HOME/bin/greenloop-inject.ts"
+  place "$TMP/cli/greenloop-mcp.ts" "$GL_HOME/bin/greenloop-mcp.ts"
 
   cat > "$TMP/greenloop" <<SHIM
 #!/bin/sh

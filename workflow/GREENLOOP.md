@@ -38,7 +38,10 @@
      Claude Code, Codex, and Gemini CLI via their hook layers; a
      False-GREEN guard forces an independent verdict after a reopened
      GREEN claim; and a greenloop verify fallback harness gives the Stop
-     gate teeth.
+     gate teeth. Convergence instrumentation lands too: a visual-fidelity
+     tool (.greenloop/tools/visual-fidelity.mjs) turns "it matches" into a
+     reference-vs-render percentage, a fresh-eyes judge subagent, and a
+     portable MCP server (cli/greenloop-mcp.ts) exposing verify/gate/state.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
