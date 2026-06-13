@@ -225,6 +225,9 @@ reference. The context that claimed the match may not clear it: a reopened visua
 match is the canonical false-GREEN, and more screenshots viewed by the same
 saturated context will keep affirming a match that is not there. Resolve it with
 an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+GREENLOOP ships one such comparison at .greenloop/tools/visual-fidelity.mjs — it
+renders the result (or takes a screenshot) and reports a fidelity percentage
+against the reference, so the match is a falsifiable number rather than a claim.
 
 ## P6. Single-prompt mode (the field test)
 

@@ -1247,6 +1247,9 @@ reference. The context that claimed the match may not clear it: a reopened visua
 match is the canonical false-GREEN, and more screenshots viewed by the same
 saturated context will keep affirming a match that is not there. Resolve it with
 an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+GREENLOOP ships one such comparison at .greenloop/tools/visual-fidelity.mjs — it
+renders the result (or takes a screenshot) and reports a fidelity percentage
+against the reference, so the match is a falsifiable number rather than a claim.
 
 ## P6. Single-prompt mode (the field test)
 
@@ -1472,6 +1475,95 @@ INDEPENDENT CHECK PERFORMED: <what you actually inspected — files, diffs, evid
 Be adversarial but fair. A PASS from you should mean you tried to break it and could not.
 `
 
+/* ── Visual fidelity tool (DESIGN profile instrumentation) ───────────────────
+ * Convergence instrumentation: turns "it matches" into a number. Compares a
+ * rendered result against a reference image and reports a fidelity percentage
+ * (implementation-divergence metric), exiting non-zero past a threshold. This
+ * is the mechanical answer to the false-GREEN visual loop — an external diff,
+ * not another self-look. Deps are imported lazily so the repo stays zero-dep
+ * until the tool is actually run. Written without template literals/backticks
+ * so it embeds verbatim. */
+const VISUAL_FIDELITY_TOOL = `#!/usr/bin/env node
+// GREENLOOP visual fidelity check — mechanical implementation-divergence metric
+// for the DESIGN profile. Compares a rendered result against a reference image
+// and reports a fidelity percentage; exits non-zero when divergence exceeds the
+// threshold. "It matches" becomes a falsifiable number, not a self-look.
+// Author: violhex (https://github.com/violhex) · MIT
+//
+// Usage:
+//   node visual-fidelity.mjs --reference ref.png --actual out.png [--threshold 0.1]
+//   node visual-fidelity.mjs --reference ref.png --url http://localhost:3000 [--width 1280 --height 800]
+// Deps load lazily: pngjs (image decode), playwright (only for --url).
+//   npm i -D pngjs        # required for the image compare
+//   npm i -D playwright   # only for --url, then: npx playwright install chromium
+import { readFileSync, writeFileSync, existsSync } from "node:fs"
+
+function fail(msg, code) { console.error(msg); process.exit(code === undefined ? 1 : code) }
+function arg(name, def) {
+  const i = process.argv.indexOf("--" + name)
+  if (i === -1) return def
+  const v = process.argv[i + 1]
+  return (v && v.slice(0, 2) !== "--") ? v : true
+}
+async function loadPNG() {
+  try { return (await import("pngjs")).PNG }
+  catch { return fail("GREENLOOP visual-fidelity needs 'pngjs' — install it:  npm i -D pngjs", 3) }
+}
+async function screenshot(url, width, height, out) {
+  let chromium
+  try { chromium = (await import("playwright")).chromium }
+  catch { return fail("GREENLOOP visual-fidelity --url needs 'playwright' — npm i -D playwright && npx playwright install chromium", 3) }
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ viewport: { width: width, height: height } })
+    await page.goto(url, { waitUntil: "networkidle" })
+    await page.screenshot({ path: out })
+  } finally { await browser.close() }
+}
+
+const reference = arg("reference")
+let actual = arg("actual")
+const url = arg("url")
+const threshold = Number(arg("threshold", "0.1"))
+const width = Number(arg("width", "1280"))
+const height = Number(arg("height", "800"))
+const out = arg("out", ".greenloop/tools/last-diff.png")
+const TOL = 32 // per-channel tolerance (0-255), absorbs antialiasing noise
+
+if (!reference || (!actual && !url)) fail("usage: visual-fidelity --reference <png> (--actual <png> | --url <url>) [--threshold 0.1]", 2)
+if (!existsSync(reference)) fail("reference image not found: " + reference, 2)
+
+const PNG = await loadPNG()
+if (url) { actual = ".greenloop/tools/last-actual.png"; await screenshot(url, width, height, actual) }
+if (!existsSync(actual)) fail("actual image not found: " + actual, 2)
+
+const ref = PNG.sync.read(readFileSync(reference))
+const act = PNG.sync.read(readFileSync(actual))
+if (ref.width !== act.width || ref.height !== act.height) {
+  fail("VISUAL FIDELITY: size mismatch (reference " + ref.width + "x" + ref.height + " vs actual " + act.width + "x" + act.height + ") — render at the reference's dimensions before comparing.", 1)
+}
+
+const total = ref.width * ref.height
+const diff = new PNG({ width: ref.width, height: ref.height })
+let changed = 0
+for (let i = 0; i < total; i++) {
+  const o = i * 4
+  const differs = Math.abs(ref.data[o] - act.data[o]) > TOL
+    || Math.abs(ref.data[o + 1] - act.data[o + 1]) > TOL
+    || Math.abs(ref.data[o + 2] - act.data[o + 2]) > TOL
+  if (differs) { changed++; diff.data[o] = 255; diff.data[o + 1] = 0; diff.data[o + 2] = 0; diff.data[o + 3] = 255 }
+  else { diff.data[o] = ref.data[o]; diff.data[o + 1] = ref.data[o + 1]; diff.data[o + 2] = ref.data[o + 2]; diff.data[o + 3] = 70 }
+}
+try { writeFileSync(out, PNG.sync.write(diff)) } catch (e) {}
+
+const divergence = changed / total
+const fidelity = (1 - divergence) * 100
+const verdict = divergence <= threshold ? "PASS" : "FAIL"
+console.log("VISUAL FIDELITY: " + fidelity.toFixed(1) + "%  (" + (divergence * 100).toFixed(1) + "% of pixels diverge; threshold " + (threshold * 100).toFixed(0) + "%)  -> " + verdict)
+console.log("diff image written to: " + out)
+process.exit(verdict === "PASS" ? 0 : 1)
+`
+
 /* ════════════════════════════════════════════════════════════════════════
  * FILESYSTEM PRIMITIVES — every binding is built from these four, so
  * idempotency and backups are implemented exactly once.
@@ -1578,6 +1670,10 @@ function corePackageOps(ctx: Ctx): FileOp[] {
   const keep = join(ctx.root, ".greenloop", ".gitkeep")
   if (!existsSync(join(ctx.root, ".greenloop")))
     ops.push({ path: join(ctx.root, ".greenloop") + "/", action: "create", detail: "state directory", write: () => { mkdirSync(join(ctx.root, ".greenloop"), { recursive: true }); writeFileSync(keep, "") } })
+  // Convergence instrumentation: the visual-fidelity tool (DESIGN profile).
+  // Lazily pulls its own deps, so the repo stays zero-dep until it is run.
+  if (ctx.hooks)
+    ops.push(ownedFile(join(ctx.root, ".greenloop", "tools", "visual-fidelity.mjs"), VISUAL_FIDELITY_TOOL, s => s.includes("GREENLOOP")))
   return ops
 }
 
