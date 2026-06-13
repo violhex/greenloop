@@ -39,6 +39,7 @@ import {
 } from "node:fs"
 import { join, resolve, delimiter, dirname } from "node:path"
 import { homedir, platform } from "node:os"
+import { spawnSync } from "node:child_process"
 
 const VERSION = "2.4.0"
 const MARK = (id: string) => ({
@@ -117,10 +118,11 @@ const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.4.0
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
      v2.4.0: enforcement parity — the OpenCode binding gains a real
-     pre-edit gate (.opencode/plugins/greenloop.ts), and the Claude Code
-     and OpenCode state gates now require a falsifiable DONE WHEN (and,
-     on design tasks, the intent lock) before any project edit — not
-     merely the presence of a state file.
+     pre-edit gate (.opencode/plugins/greenloop.ts); the Claude Code and
+     OpenCode state gates require a falsifiable DONE WHEN (and, on design
+     tasks, the intent lock) before any project edit; a False-GREEN guard
+     forces an independent verdict after a reopened GREEN claim; and a
+     greenloop verify fallback harness gives the Stop gate teeth.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
@@ -222,7 +224,7 @@ budgets         {tool_calls {limit, used}, judge_rounds {limit, used},
                  mode: normal|compressed}
 convergence     {state: ORBITING|CONTACT|LOCK_IN, target, done_when,
                  active_branches[], parked_branches[]}                       ← Section C
-verification    {command, last_run, result, green}
+verification    {command, last_run, result, green, green_claims, last_independent_check}
 \`\`\`
 
 **worklog.md format (append-only, one block per consequential action):**
@@ -753,6 +755,19 @@ happen.
 - The attempt counter lives in \`state.failures[].attempts\`, not in your self-report.
   Restarting the count by rephrasing the problem is self-deception — and now it's
   also visibly a lie in the artifact.
+- **False-GREEN guard (independent verification beats self-assessment).** Each
+  time you declare a unit done / GREEN / "it matches" and it is reopened — by the
+  user, by a re-run, or by a later check — increment \`verification.green_claims\`.
+  On the **second** reopened claim for the same target your own assessment is
+  exhausted: you may NOT clear it by looking again yourself. Obtain an INDEPENDENT
+  verdict before any further GREEN claim — a fresh-context sub-agent given only
+  {target, the reference/spec, your output, evidence} (Appendix A fresh-eyes), a
+  different model, or a mechanical comparison (a diff, a screenshot/image diff
+  against the reference, a deterministic check). Record it in
+  \`verification.last_independent_check\`. "I re-read it and it matches" is not
+  evidence; an external comparison is. This is the canonical false-GREEN failure:
+  a saturated context that cannot see its own gap and loops on re-affirmation —
+  more self-review only deepens the loop.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
@@ -777,6 +792,10 @@ When all steps report done:
    for STANDARD): hostile inputs, empty/null/unicode/huge payloads, concurrency,
    error paths, the unhappy paths the plan didn't enumerate. If you have sub-agents,
    give a fresh one only {diff, DoD} and ask it to find a reason this is not done.
+   If any prior GREEN was reopened (\`verification.green_claims\` ≥ 1), this pass MUST
+   be run by an INDEPENDENT evaluator — a fresh sub-agent, a different model, or a
+   mechanical check — never by the context that produced the output. Self-review
+   cannot clear a disputed GREEN (the Phase 8 False-GREEN guard).
 3. **Critic final check:** re-read \`state.user_request\` — the ORIGINAL ask, verbatim.
    Run the Goal Corruption Check (R7) one last time: did the implementation drift from
    the actual ask while satisfying the formalized DoD? Original intent wins.
@@ -997,7 +1016,7 @@ const GREENLOOP_SCHEMA = `{
     "parked_branches": []
   },
 
-  "verification": { "command": "", "last_run": "", "result": "", "green": false }
+  "verification": { "command": "", "last_run": "", "result": "", "green": false, "green_claims": 0, "last_independent_check": "" }
 }`
 
 const GREENLOOP_PROFILE_DESIGN = `# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.4.0)
@@ -1220,6 +1239,14 @@ Then run the Design Intent Judge cold from only {reference screenshots,
 intent-lock.md, composition-spec.md, rendered output}. If it says the output
 preserved structure but not design language, the task is RED.
 
+If an "it matches" claim was reopened (\`verification.green_claims\` ≥ 1), the cold
+Design Intent Judge is MANDATORY and must run from an INDEPENDENT evaluator —
+fresh context, a different model, or an actual screenshot/image diff against the
+reference. The context that claimed the match may not clear it: a reopened visual
+match is the canonical false-GREEN, and more screenshots viewed by the same
+saturated context will keep affirming a match that is not there. Resolve it with
+an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+
 ## P6. Single-prompt mode (the field test)
 
 This profile needs no tools. In a bare chat (ChatGPT, Claude.ai, anywhere):
@@ -1307,13 +1334,24 @@ ROOT="\${CLAUDE_PROJECT_DIR:-.}"
 VERIFY=""
 [ -x "$ROOT/scripts/verify.sh" ] && VERIFY="$ROOT/scripts/verify.sh"
 [ -z "$VERIFY" ] && [ -x "$ROOT/.greenloop/verify.sh" ] && VERIFY="$ROOT/.greenloop/verify.sh"
-[ -z "$VERIFY" ] && exit 0   # no harness yet — Phase 6 hasn't run; allow stop
-if ! OUT=$("$VERIFY" 2>&1); then
-  echo "GREENLOOP: verification harness FAILED — not GREEN. Continue the execution loop (Phase 8). Output tail:" >&2
-  echo "$OUT" | tail -n 20 >&2
-  exit 2
+if [ -n "$VERIFY" ]; then
+  if ! OUT=$("$VERIFY" 2>&1); then
+    echo "GREENLOOP: verification harness FAILED — not GREEN. Continue the execution loop (Phase 8). Output tail:" >&2
+    echo "$OUT" | tail -n 20 >&2
+    exit 2
+  fi
+  exit 0
 fi
-exit 0
+# No project harness — fall back to the state-aware check so GREEN still has
+# teeth (DoD satisfied, no open failures, disputed GREEN independently checked).
+if [ -f "$ROOT/.greenloop/state.json" ] && command -v greenloop >/dev/null 2>&1; then
+  if ! OUT=$(greenloop verify --dir="$ROOT" 2>&1); then
+    echo "GREENLOOP: not GREEN — Definition of Done is unmet. Continue Phase 8, or build a harness (Phase 7)." >&2
+    echo "$OUT" | tail -n 20 >&2
+    exit 2
+  fi
+fi
+exit 0   # no harness and no state/CLI — allow stop
 `
 
 /* ── OpenCode enforcement plugin ────────────────────────────────────────────
@@ -1895,6 +1933,72 @@ async function tui(ctx: Ctx) {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+ * VERIFY — state-aware GREEN check (`greenloop verify`)
+ * A fallback harness so the Stop gate has teeth even before the project
+ * authors a scripts/verify.sh. GREEN is mechanical, not a feeling: it reads
+ * .greenloop/state.json and refuses to pass while the DoD is unmet, a failure
+ * is unresolved, or a disputed GREEN lacks an independent verdict (the
+ * False-GREEN guard, Phase 8). If a project harness exists it is also run.
+ * Exit 0 = GREEN · 1 = not GREEN · 3 = no/invalid state.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+function verify(ctx: Ctx, quiet: boolean): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) {
+    if (!quiet) console.error("GREENLOOP verify: no .greenloop/state.json — no active task to verify. Run Phase 1 (TRIAGE) first.")
+    return 3
+  }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { if (!quiet) console.error("GREENLOOP verify: .greenloop/state.json is not valid JSON."); return 3 }
+
+  const reasons: string[] = []
+
+  // Definition of Done — every item must be `pass`.
+  const dod: any[] = Array.isArray(state.dod) ? state.dod : []
+  if (dod.length === 0) reasons.push("no DoD defined (Phase 2) — GREEN is not falsifiable")
+  for (const d of dod) {
+    if (!d || d.status !== "pass")
+      reasons.push(`DoD ${d?.id ?? "?"} not pass (status=${d?.status ?? "?"})${d?.check ? ": " + String(d.check).slice(0, 60) : ""}`)
+    else if (!d.evidence)
+      reasons.push(`DoD ${d.id ?? "?"} marked pass without evidence`)
+  }
+
+  // Unresolved failures — a recorded error with no resolution is still open.
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  for (const f of failures)
+    if (f && f.error && !f.resolution)
+      reasons.push(`unresolved failure at ${f.step ?? "?"}: ${String(f.error).slice(0, 60)}`)
+
+  // False-GREEN guard (Phase 8): a disputed GREEN needs an independent verdict.
+  const v = state.verification ?? {}
+  const claims = Number(v.green_claims ?? 0)
+  if (claims >= 2 && !v.last_independent_check)
+    reasons.push(`disputed GREEN (green_claims=${claims}) without an independent verification — obtain a fresh-eyes / external verdict (Phase 8 False-GREEN guard) and record it in verification.last_independent_check`)
+
+  // Project harness, if present, must also pass.
+  const harness = ["scripts/verify.sh", ".greenloop/verify.sh"]
+    .map(r => join(ctx.root, r)).find(p => existsSync(p))
+  if (harness) {
+    const r = spawnSync(harness, [], { cwd: ctx.root, encoding: "utf8" })
+    if (r.status !== 0) {
+      const tail = ((r.stdout ?? "") + (r.stderr ?? "")).trim().split("\n").slice(-12).join("\n")
+      reasons.push(`project harness failed (${rel(ctx, harness)}, exit ${r.status ?? "?"})${tail ? ":\n" + tail : ""}`)
+    }
+  }
+
+  if (reasons.length) {
+    if (!quiet) {
+      console.error("GREENLOOP verify: RED — not GREEN. Blocking reasons:")
+      for (const r of reasons) console.error(`  • ${r}`)
+    }
+    return 1
+  }
+  if (!quiet) console.log(`GREENLOOP verify: GREEN ✓  ${dod.length} DoD item(s) pass${harness ? ` · ${rel(ctx, harness)} passed` : " · no project harness (state-verified)"}.`)
+  return 0
+}
+
+/* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
 
@@ -1910,6 +2014,8 @@ function main() {
     dryRun: has("--dry-run"),
     hooks: !has("--no-hooks"),
   }
+  // Subcommand: `greenloop verify` — state-aware GREEN check (see VERIFY).
+  if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),

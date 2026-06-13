@@ -54,5 +54,5 @@
     "parked_branches": []
   },
 
-  "verification": { "command": "", "last_run": "", "result": "", "green": false }
+  "verification": { "command": "", "last_run": "", "result": "", "green": false, "green_claims": 0, "last_independent_check": "" }
 }

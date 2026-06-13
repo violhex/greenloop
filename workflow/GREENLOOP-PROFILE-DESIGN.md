@@ -218,6 +218,14 @@ Then run the Design Intent Judge cold from only {reference screenshots,
 intent-lock.md, composition-spec.md, rendered output}. If it says the output
 preserved structure but not design language, the task is RED.
 
+If an "it matches" claim was reopened (`verification.green_claims` ≥ 1), the cold
+Design Intent Judge is MANDATORY and must run from an INDEPENDENT evaluator —
+fresh context, a different model, or an actual screenshot/image diff against the
+reference. The context that claimed the match may not clear it: a reopened visual
+match is the canonical false-GREEN, and more screenshots viewed by the same
+saturated context will keep affirming a match that is not there. Resolve it with
+an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+
 ## P6. Single-prompt mode (the field test)
 
 This profile needs no tools. In a bare chat (ChatGPT, Claude.ai, anywhere):
