@@ -21,7 +21,8 @@
  *   --dry-run         plan + print every file op, write nothing
  *   --yes             apply without confirmation (headless)
  *   --agents=a,b,c    restrict to specific target ids (see --list for ids)
- *   --hooks / --no-hooks   enable/disable Claude Code enforcement hooks (default: on)
+ *   --hooks / --no-hooks   enable/disable agent enforcement gates — Claude Code
+ *                          (PreToolUse+Stop), OpenCode, Codex, Gemini (default: on)
  *   --dir=PATH        target project root (default: cwd)
  *
  * GUARANTEES:
@@ -38,8 +39,9 @@ import {
 } from "node:fs"
 import { join, resolve, delimiter, dirname } from "node:path"
 import { homedir, platform } from "node:os"
+import { spawnSync } from "node:child_process"
 
-const VERSION = "2.3.1"
+const VERSION = "2.4.0"
 const MARK = (id: string) => ({
   begin: `<!-- GREENLOOP:BEGIN ${id} v${VERSION} -->`,
   beginRe: new RegExp(`<!-- GREENLOOP:BEGIN ${id} v[^ ]+ -->`),
@@ -81,7 +83,7 @@ interface AgentTarget {
 
 /* ── embedded payloads (spliced at build time; do not edit inline) ─────── */
 
-const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.3.1
+const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.4.0
 <!-- Drop this file into any agentic coding environment (Claude Code, Cursor, Windsurf,
      Aider, OpenHands, custom harnesses) as AGENTS.md, CLAUDE.md, .cursorrules, or a
      referenced instruction file. It is model-agnostic.
@@ -115,6 +117,16 @@ const GREENLOOP_CORE = `# GREENLOOP — Agent Execution Workflow v2.3.1
      v2.3.1: DESIGN profile hardened with Intent Preservation Layer,
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
+     v2.4.0: enforcement parity — the OpenCode binding gains a real
+     pre-edit gate (.opencode/plugins/greenloop.ts); the same DONE WHEN
+     (and, on design tasks, intent lock) pre-edit gate now extends to
+     Claude Code, Codex, and Gemini CLI via their hook layers; a
+     False-GREEN guard forces an independent verdict after a reopened
+     GREEN claim; and a greenloop verify fallback harness gives the Stop
+     gate teeth. Convergence instrumentation lands too: a visual-fidelity
+     tool (.greenloop/tools/visual-fidelity.mjs) turns "it matches" into a
+     reference-vs-render percentage, a fresh-eyes judge subagent, and a
+     portable MCP server (cli/greenloop-mcp.ts) exposing verify/gate/state.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
@@ -216,7 +228,7 @@ budgets         {tool_calls {limit, used}, judge_rounds {limit, used},
                  mode: normal|compressed}
 convergence     {state: ORBITING|CONTACT|LOCK_IN, target, done_when,
                  active_branches[], parked_branches[]}                       ← Section C
-verification    {command, last_run, result, green}
+verification    {command, last_run, result, green, green_claims, last_independent_check}
 \`\`\`
 
 **worklog.md format (append-only, one block per consequential action):**
@@ -747,6 +759,19 @@ happen.
 - The attempt counter lives in \`state.failures[].attempts\`, not in your self-report.
   Restarting the count by rephrasing the problem is self-deception — and now it's
   also visibly a lie in the artifact.
+- **False-GREEN guard (independent verification beats self-assessment).** Each
+  time you declare a unit done / GREEN / "it matches" and it is reopened — by the
+  user, by a re-run, or by a later check — increment \`verification.green_claims\`.
+  On the **second** reopened claim for the same target your own assessment is
+  exhausted: you may NOT clear it by looking again yourself. Obtain an INDEPENDENT
+  verdict before any further GREEN claim — a fresh-context sub-agent given only
+  {target, the reference/spec, your output, evidence} (Appendix A fresh-eyes), a
+  different model, or a mechanical comparison (a diff, a screenshot/image diff
+  against the reference, a deterministic check). Record it in
+  \`verification.last_independent_check\`. "I re-read it and it matches" is not
+  evidence; an external comparison is. This is the canonical false-GREEN failure:
+  a saturated context that cannot see its own gap and loops on re-affirmation —
+  more self-review only deepens the loop.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
@@ -771,6 +796,10 @@ When all steps report done:
    for STANDARD): hostile inputs, empty/null/unicode/huge payloads, concurrency,
    error paths, the unhappy paths the plan didn't enumerate. If you have sub-agents,
    give a fresh one only {diff, DoD} and ask it to find a reason this is not done.
+   If any prior GREEN was reopened (\`verification.green_claims\` ≥ 1), this pass MUST
+   be run by an INDEPENDENT evaluator — a fresh sub-agent, a different model, or a
+   mechanical check — never by the context that produced the output. Self-review
+   cannot clear a disputed GREEN (the Phase 8 False-GREEN guard).
 3. **Critic final check:** re-read \`state.user_request\` — the ORIGINAL ask, verbatim.
    Run the Goal Corruption Check (R7) one last time: did the implementation drift from
    the actual ask while satisfying the formalized DoD? Original intent wins.
@@ -837,7 +866,7 @@ non-negotiable core of each appendix:
    in every reply. Neither the harness nor the State Law is waived by a missing
    filesystem.`
 
-const GREENLOOP_APPENDICES = `# GREENLOOP — Appendices (companion to GREENLOOP.md v2.3.1)
+const GREENLOOP_APPENDICES = `# GREENLOOP — Appendices (companion to GREENLOOP.md v2.4.0)
 <!-- Place this file next to GREENLOOP.md. The core file references it. If you are an
      agent reading this without the core file, go read GREENLOOP.md first — nothing
      here makes sense without the contract, the State Law, and Sections S/C/R.
@@ -936,7 +965,7 @@ rules for synthesizing your own.
    DevOps rollback lenses plus the fourth-seat option.`
 
 const GREENLOOP_SCHEMA = `{
-  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.3.1). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
+  "_doc": "GREENLOOP state template (companion to GREENLOOP.md v2.4.0). Copy to .greenloop/state.json to initialize. Minimum viable schema — extend, don't shrink. Pipe-delimited strings show the allowed values for that field. Author: violhex (https://github.com/violhex) · MIT.",
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
@@ -991,10 +1020,10 @@ const GREENLOOP_SCHEMA = `{
     "parked_branches": []
   },
 
-  "verification": { "command": "", "last_run": "", "result": "", "green": false }
+  "verification": { "command": "", "last_run": "", "result": "", "green": false, "green_claims": 0, "last_independent_check": "" }
 }`
 
-const GREENLOOP_PROFILE_DESIGN = `# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.1)
+const GREENLOOP_PROFILE_DESIGN = `# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.4.0)
 <!-- A domain profile maps the generic GREENLOOP phases onto a specific kind of
      work — it adds domain organs to the same skeleton. The core file always wins
      on conflict. This profile activates when the task is visual: building or
@@ -1214,6 +1243,17 @@ Then run the Design Intent Judge cold from only {reference screenshots,
 intent-lock.md, composition-spec.md, rendered output}. If it says the output
 preserved structure but not design language, the task is RED.
 
+If an "it matches" claim was reopened (\`verification.green_claims\` ≥ 1), the cold
+Design Intent Judge is MANDATORY and must run from an INDEPENDENT evaluator —
+fresh context, a different model, or an actual screenshot/image diff against the
+reference. The context that claimed the match may not clear it: a reopened visual
+match is the canonical false-GREEN, and more screenshots viewed by the same
+saturated context will keep affirming a match that is not there. Resolve it with
+an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+GREENLOOP ships one such comparison at .greenloop/tools/visual-fidelity.mjs — it
+renders the result (or takes a screenshot) and reports a fidelity percentage
+against the reference, so the match is a falsifiable number rather than a claim.
+
 ## P6. Single-prompt mode (the field test)
 
 This profile needs no tools. In a bare chat (ChatGPT, Claude.ai, anywhere):
@@ -1259,11 +1299,46 @@ Non-negotiables that apply even before you read it:
 /* ── Claude Code enforcement hooks ─────────────────────────────────────── */
 
 const HOOK_PRETOOL = `#!/bin/sh
-# GREENLOOP PreToolUse gate — blocks file edits until Phase 1 has
-# initialized workflow state. Exit 2 = block, stderr is fed to the agent.
-ROOT="\${CLAUDE_PROJECT_DIR:-.}"
-if [ ! -f "$ROOT/.greenloop/state.json" ]; then
-  echo "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json and populate user_request, DoD, and budgets per GREENLOOP.md." >&2
+# GREENLOOP pre-edit gate — harness-agnostic (Claude Code PreToolUse, Codex
+# PreToolUse, Gemini CLI BeforeTool). Blocks edits to PROJECT files until
+# workflow state exists AND a falsifiable DONE WHEN is locked in (Section C:
+# no execution from ORBITING). Writes into .greenloop/ are always allowed —
+# recording state is how the agent reaches LOCK_IN. On design tasks the
+# Reference Fidelity Lock must precede component code (DESIGN profile P0).
+# Block protocol shared by all three: exit 2 + reason on stderr.
+INPUT=$(cat)
+ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  ROOT=$(printf '%s' "$INPUT" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
+  [ -z "$ROOT" ] && ROOT="."
+fi
+
+# Target paths arrive as "file_path" (Claude Code, Gemini) or as apply_patch
+# markers (Codex). Edits whose targets are all inside .greenloop/ are state
+# work and are never blocked.
+TARGETS=$(
+  printf '%s' "$INPUT" | grep -oE '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/'
+  printf '%s' "$INPUT" | grep -oE '\\*\\*\\* (Add|Update|Delete) File: [^"\\\\]+' | sed -E 's/^[^:]*: //'
+)
+if [ -n "$TARGETS" ] && ! printf '%s\\n' "$TARGETS" | grep -qvE '(^|/)\\.greenloop/'; then
+  exit 0
+fi
+
+STATE="$ROOT/.greenloop/state.json"
+if [ ! -f "$STATE" ]; then
+  echo "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json (via the shell) and populate user_request, DoD, and budgets per GREENLOOP.md." >&2
+  exit 2
+fi
+
+# No execution from ORBITING: require a non-empty convergence.done_when.
+if ! grep -Eq '"done_when"[[:space:]]*:[[:space:]]*"[^"]+"' "$STATE"; then
+  echo "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files." >&2
+  exit 2
+fi
+
+# Design tasks: the Reference Fidelity Lock precedes component code (DESIGN P0).
+if [ -d "$ROOT/.greenloop/design" ] && [ ! -s "$ROOT/.greenloop/design/intent-lock.md" ]; then
+  echo "GREENLOOP: .greenloop/design/ exists but intent-lock.md is empty — write the Reference Fidelity Lock (DESIGN profile P0) before generating component code." >&2
   exit 2
 fi
 exit 0
@@ -1278,13 +1353,218 @@ ROOT="\${CLAUDE_PROJECT_DIR:-.}"
 VERIFY=""
 [ -x "$ROOT/scripts/verify.sh" ] && VERIFY="$ROOT/scripts/verify.sh"
 [ -z "$VERIFY" ] && [ -x "$ROOT/.greenloop/verify.sh" ] && VERIFY="$ROOT/.greenloop/verify.sh"
-[ -z "$VERIFY" ] && exit 0   # no harness yet — Phase 6 hasn't run; allow stop
-if ! OUT=$("$VERIFY" 2>&1); then
-  echo "GREENLOOP: verification harness FAILED — not GREEN. Continue the execution loop (Phase 8). Output tail:" >&2
-  echo "$OUT" | tail -n 20 >&2
-  exit 2
+if [ -n "$VERIFY" ]; then
+  if ! OUT=$("$VERIFY" 2>&1); then
+    echo "GREENLOOP: verification harness FAILED — not GREEN. Continue the execution loop (Phase 8). Output tail:" >&2
+    echo "$OUT" | tail -n 20 >&2
+    exit 2
+  fi
+  exit 0
 fi
-exit 0
+# No project harness — fall back to the state-aware check so GREEN still has
+# teeth (DoD satisfied, no open failures, disputed GREEN independently checked).
+if [ -f "$ROOT/.greenloop/state.json" ] && command -v greenloop >/dev/null 2>&1; then
+  if ! OUT=$(greenloop verify --dir="$ROOT" 2>&1); then
+    echo "GREENLOOP: not GREEN — Definition of Done is unmet. Continue Phase 8, or build a harness (Phase 7)." >&2
+    echo "$OUT" | tail -n 20 >&2
+    exit 2
+  fi
+fi
+exit 0   # no harness and no state/CLI — allow stop
+`
+
+/* ── OpenCode enforcement plugin ────────────────────────────────────────────
+ * OpenCode auto-loads TS plugins from .opencode/plugins/. This is OpenCode's
+ * analog of the Claude Code PreToolUse hook: a `tool.execute.before` handler
+ * that THROWS (which blocks the tool call) when an edit to a project file is
+ * attempted before the workflow has reached LOCK_IN. OpenCode exposes no
+ * blocking stop hook, so the Stop/verify gate stays Claude-only. */
+const OPENCODE_PLUGIN = `// GREENLOOP enforcement plugin for OpenCode — pre-edit state gate.
+// Auto-loaded from .opencode/plugins/. Mirrors the Claude Code PreToolUse
+// hook: blocks edits to PROJECT files until .greenloop/state.json exists AND
+// convergence.done_when is non-empty (Section C: no execution from ORBITING).
+// On design tasks the intent lock must precede component code (DESIGN P0).
+// Writes into .greenloop/ are always allowed — recording state is how the
+// agent reaches LOCK_IN. Throwing in tool.execute.before blocks the call.
+// Author: violhex (https://github.com/violhex) · MIT
+import { existsSync, readFileSync, statSync } from "node:fs"
+import { join } from "node:path"
+
+const EDIT_TOOLS = new Set(["write", "edit", "patch", "multiedit"])
+
+function nonEmptyFile(p: string): boolean {
+  try { return statSync(p).size > 0 } catch { return false }
+}
+
+export const GreenloopGate = async ({ directory, worktree }: any) => {
+  const root = directory || worktree || process.cwd()
+  return {
+    "tool.execute.before": async (input: any, output: any) => {
+      if (!input || !EDIT_TOOLS.has(input.tool)) return
+      const args = (output && output.args) || {}
+      const target = String(args.filePath || args.path || args.file || "")
+      // Edits to the state layer itself are never blocked.
+      if (target.includes(".greenloop")) return
+
+      const gl = join(root, ".greenloop")
+      const statePath = join(gl, "state.json")
+      if (!existsSync(statePath)) {
+        throw new Error(
+          "GREENLOOP: no .greenloop/state.json — initialize workflow state before editing files. " +
+          "Run Phase 1 (TRIAGE): copy greenloop.state.schema.json to .greenloop/state.json and populate " +
+          "user_request, DoD, and budgets per GREENLOOP.md.",
+        )
+      }
+      let state: any
+      try {
+        state = JSON.parse(readFileSync(statePath, "utf8"))
+      } catch {
+        throw new Error("GREENLOOP: .greenloop/state.json is not valid JSON — fix it before editing project files.")
+      }
+      const doneWhen = state && state.convergence && state.convergence.done_when
+      if (typeof doneWhen !== "string" || doneWhen.trim() === "") {
+        throw new Error(
+          "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). " +
+          "Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files.",
+        )
+      }
+      const designDir = join(gl, "design")
+      if (existsSync(designDir) && !nonEmptyFile(join(designDir, "intent-lock.md"))) {
+        throw new Error(
+          "GREENLOOP: .greenloop/design/ exists but intent-lock.md is empty — write the Reference Fidelity Lock " +
+          "(DESIGN profile P0) before generating component code.",
+        )
+      }
+    },
+  }
+}
+`
+
+/* ── Fresh-eyes judge subagent (Claude Code / Agent SDK) ─────────────────────
+ * Operationalizes the Phase 8 False-GREEN guard: a read-only subagent with a
+ * fresh context that an agent can spawn (via the Agent tool) to get an
+ * INDEPENDENT verdict on a disputed GREEN or a design-intent match, instead of
+ * re-judging itself. Claude Code auto-discovers .claude/agents/*.md. */
+const CLAUDE_JUDGE_AGENT = `---
+name: greenloop-judge
+description: Independent fresh-eyes verdict on a disputed GREEN or a design-intent match. Use PROACTIVELY when a done / "it matches" / GREEN claim was reopened (verification.green_claims >= 1) so self-assessment can no longer clear it, or when a visual implementation must be judged against a reference. Returns PASS or FAIL with concrete reasons. A different underlying model is even better than fresh context alone.
+tools: Read, Grep, Glob
+model: inherit
+---
+
+You are the GREENLOOP independent judge. You did NOT write the work under review, and you must not assume it is correct. Your job is to find the gap the original author's saturated context can no longer see — the canonical false-GREEN, where a tired context keeps re-affirming a match that is not there.
+
+You are given only: the target/spec (or the reference), the produced output, and the evidence offered. Judge against those, not against anyone's confidence or restated intentions.
+
+General verdict procedure (any task):
+1. Restate, in your own words, what DONE actually requires for this target.
+2. Check the output against each requirement. For every "it works" / "it matches" claim, demand concrete evidence — a command plus its actual output, a diff, a measurement. "I re-read it and it looks right" is not evidence.
+3. List every requirement that is unmet, unverified, or only self-asserted.
+
+For visual / design replication (DESIGN profile), also answer cold:
+1. What is the design's purpose and the emotional response it targets?
+2. What visual mechanisms create that response (hierarchy, composition, depth, motion)?
+3. What composition strategy moves the eye?
+4. What would make a human recognize the reference if its colors and fonts changed?
+5. Did the implementation preserve those mechanisms, or only copy tokens and structure?
+A token-perfect output that loses the reference's composition or feeling is a FAIL. If only screenshots exist and you cannot mechanically compare, say so and require an external screenshot/image diff rather than another self-look.
+
+Output exactly this shape:
+VERDICT: PASS | FAIL
+REASONS:
+- <one concrete, falsifiable reason per line; for FAIL, name what is missing and how to verify it>
+INDEPENDENT CHECK PERFORMED: <what you actually inspected — files, diffs, evidence>
+
+Be adversarial but fair. A PASS from you should mean you tried to break it and could not.
+`
+
+/* ── Visual fidelity tool (DESIGN profile instrumentation) ───────────────────
+ * Convergence instrumentation: turns "it matches" into a number. Compares a
+ * rendered result against a reference image and reports a fidelity percentage
+ * (implementation-divergence metric), exiting non-zero past a threshold. This
+ * is the mechanical answer to the false-GREEN visual loop — an external diff,
+ * not another self-look. Deps are imported lazily so the repo stays zero-dep
+ * until the tool is actually run. Written without template literals/backticks
+ * so it embeds verbatim. */
+const VISUAL_FIDELITY_TOOL = `#!/usr/bin/env node
+// GREENLOOP visual fidelity check — mechanical implementation-divergence metric
+// for the DESIGN profile. Compares a rendered result against a reference image
+// and reports a fidelity percentage; exits non-zero when divergence exceeds the
+// threshold. "It matches" becomes a falsifiable number, not a self-look.
+// Author: violhex (https://github.com/violhex) · MIT
+//
+// Usage:
+//   node visual-fidelity.mjs --reference ref.png --actual out.png [--threshold 0.1]
+//   node visual-fidelity.mjs --reference ref.png --url http://localhost:3000 [--width 1280 --height 800]
+// Deps load lazily: pngjs (image decode), playwright (only for --url).
+//   npm i -D pngjs        # required for the image compare
+//   npm i -D playwright   # only for --url, then: npx playwright install chromium
+import { readFileSync, writeFileSync, existsSync } from "node:fs"
+
+function fail(msg, code) { console.error(msg); process.exit(code === undefined ? 1 : code) }
+function arg(name, def) {
+  const i = process.argv.indexOf("--" + name)
+  if (i === -1) return def
+  const v = process.argv[i + 1]
+  return (v && v.slice(0, 2) !== "--") ? v : true
+}
+async function loadPNG() {
+  try { return (await import("pngjs")).PNG }
+  catch { return fail("GREENLOOP visual-fidelity needs 'pngjs' — install it:  npm i -D pngjs", 3) }
+}
+async function screenshot(url, width, height, out) {
+  let chromium
+  try { chromium = (await import("playwright")).chromium }
+  catch { return fail("GREENLOOP visual-fidelity --url needs 'playwright' — npm i -D playwright && npx playwright install chromium", 3) }
+  const browser = await chromium.launch()
+  try {
+    const page = await browser.newPage({ viewport: { width: width, height: height } })
+    await page.goto(url, { waitUntil: "networkidle" })
+    await page.screenshot({ path: out })
+  } finally { await browser.close() }
+}
+
+const reference = arg("reference")
+let actual = arg("actual")
+const url = arg("url")
+const threshold = Number(arg("threshold", "0.1"))
+const width = Number(arg("width", "1280"))
+const height = Number(arg("height", "800"))
+const out = arg("out", ".greenloop/tools/last-diff.png")
+const TOL = 32 // per-channel tolerance (0-255), absorbs antialiasing noise
+
+if (!reference || (!actual && !url)) fail("usage: visual-fidelity --reference <png> (--actual <png> | --url <url>) [--threshold 0.1]", 2)
+if (!existsSync(reference)) fail("reference image not found: " + reference, 2)
+
+const PNG = await loadPNG()
+if (url) { actual = ".greenloop/tools/last-actual.png"; await screenshot(url, width, height, actual) }
+if (!existsSync(actual)) fail("actual image not found: " + actual, 2)
+
+const ref = PNG.sync.read(readFileSync(reference))
+const act = PNG.sync.read(readFileSync(actual))
+if (ref.width !== act.width || ref.height !== act.height) {
+  fail("VISUAL FIDELITY: size mismatch (reference " + ref.width + "x" + ref.height + " vs actual " + act.width + "x" + act.height + ") — render at the reference's dimensions before comparing.", 1)
+}
+
+const total = ref.width * ref.height
+const diff = new PNG({ width: ref.width, height: ref.height })
+let changed = 0
+for (let i = 0; i < total; i++) {
+  const o = i * 4
+  const differs = Math.abs(ref.data[o] - act.data[o]) > TOL
+    || Math.abs(ref.data[o + 1] - act.data[o + 1]) > TOL
+    || Math.abs(ref.data[o + 2] - act.data[o + 2]) > TOL
+  if (differs) { changed++; diff.data[o] = 255; diff.data[o + 1] = 0; diff.data[o + 2] = 0; diff.data[o + 3] = 255 }
+  else { diff.data[o] = ref.data[o]; diff.data[o + 1] = ref.data[o + 1]; diff.data[o + 2] = ref.data[o + 2]; diff.data[o + 3] = 70 }
+}
+try { writeFileSync(out, PNG.sync.write(diff)) } catch (e) {}
+
+const divergence = changed / total
+const fidelity = (1 - divergence) * 100
+const verdict = divergence <= threshold ? "PASS" : "FAIL"
+console.log("VISUAL FIDELITY: " + fidelity.toFixed(1) + "%  (" + (divergence * 100).toFixed(1) + "% of pixels diverge; threshold " + (threshold * 100).toFixed(0) + "%)  -> " + verdict)
+console.log("diff image written to: " + out)
+process.exit(verdict === "PASS" ? 0 : 1)
 `
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1393,6 +1673,10 @@ function corePackageOps(ctx: Ctx): FileOp[] {
   const keep = join(ctx.root, ".greenloop", ".gitkeep")
   if (!existsSync(join(ctx.root, ".greenloop")))
     ops.push({ path: join(ctx.root, ".greenloop") + "/", action: "create", detail: "state directory", write: () => { mkdirSync(join(ctx.root, ".greenloop"), { recursive: true }); writeFileSync(keep, "") } })
+  // Convergence instrumentation: the visual-fidelity tool (DESIGN profile).
+  // Lazily pulls its own deps, so the repo stays zero-dep until it is run.
+  if (ctx.hooks)
+    ops.push(ownedFile(join(ctx.root, ".greenloop", "tools", "visual-fidelity.mjs"), VISUAL_FIDELITY_TOOL, s => s.includes("GREENLOOP")))
   return ops
 }
 
@@ -1417,7 +1701,7 @@ const TARGETS: AgentTarget[] = [
   },
   {
     id: "claude-code", name: "Claude Code", kind: "cli",
-    hint: "CLAUDE.md import + optional enforcement hooks (PreToolUse / Stop)",
+    hint: "CLAUDE.md import + optional hooks (PreToolUse / Stop) + fresh-eyes judge subagent",
     detect: ctx => detected(
       which("claude") && "claude on PATH",
       firstExisting(join(ctx.home, ".claude")) && "~/.claude/",
@@ -1432,6 +1716,7 @@ const TARGETS: AgentTarget[] = [
           execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
           execFile(join(ctx.root, ".greenloop", "hooks", "stop-verify.sh"), HOOK_STOP),
           claudeSettingsOp(ctx),
+          ownedFile(join(ctx.root, ".claude", "agents", "greenloop-judge.md"), CLAUDE_JUDGE_AGENT, s => s.includes("GREENLOOP")),
         )
       }
       return ops
@@ -1517,30 +1802,56 @@ const TARGETS: AgentTarget[] = [
   },
   {
     id: "gemini", name: "Gemini CLI", kind: "cli",
-    hint: "GEMINI.md (marker block)",
+    hint: "GEMINI.md + optional BeforeTool enforcement gate",
     detect: ctx => detected(
       which("gemini") && "gemini on PATH",
       firstExisting(join(ctx.home, ".gemini")) && "~/.gemini/",
+      firstExisting(join(ctx.root, ".gemini")) && ".gemini/ in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())]
+      if (ctx.hooks) ops.push(
+        execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        geminiSettingsOp(ctx),
+      )
+      return ops
+    },
   },
   {
     id: "codex", name: "OpenAI Codex CLI", kind: "cli",
-    hint: "AGENTS.md (via universal) — detection only confirms reach",
+    hint: "AGENTS.md + optional PreToolUse enforcement gate",
     detect: ctx => detected(
       which("codex") && "codex on PATH",
       firstExisting(join(ctx.home, ".codex")) && "~/.codex/",
+      firstExisting(join(ctx.root, ".codex")) && ".codex/ in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
+      if (ctx.hooks) ops.push(
+        execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        codexHooksOp(ctx),
+      )
+      return ops
+    },
   },
   {
     id: "opencode", name: "OpenCode", kind: "cli",
-    hint: "AGENTS.md (via universal)",
+    hint: "AGENTS.md + optional enforcement plugin (pre-edit state gate)",
     detect: ctx => detected(
       which("opencode") && "opencode on PATH",
       firstExisting(join(ctx.home, ".config", "opencode")) && "~/.config/opencode/",
+      firstExisting(join(ctx.root, ".opencode")) && ".opencode/ in project",
+      firstExisting(join(ctx.root, "opencode.json"), join(ctx.root, "opencode.jsonc")) && "opencode config in project",
     ),
-    plan: ctx => [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())],
+    plan: ctx => {
+      const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
+      if (ctx.hooks)
+        ops.push(ownedFile(
+          join(ctx.root, ".opencode", "plugins", "greenloop.ts"),
+          OPENCODE_PLUGIN, s => s.includes("GREENLOOP"),
+        ))
+      return ops
+    },
   },
   {
     id: "zed", name: "Zed", kind: "ide",
@@ -1619,6 +1930,49 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
   const next = build(cur)
   if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hooks already wired", write: () => {} }
   return { path, action: "merge", detail: "hooks merged into existing settings", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
+}
+
+/** .codex/hooks.json — Codex PreToolUse gate. matcher "Edit|Write" covers
+ *  apply_patch file edits; Codex blocks on exit 2 + stderr, same as the gate.
+ *  JSON merge that adds our hook without disturbing existing ones. */
+function codexHooksOp(ctx: Ctx): FileOp {
+  const path = join(ctx.root, ".codex", "hooks.json")
+  const entry = { matcher: "Edit|Write", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/pretool-gate.sh` }] }
+  const build = (cfg: any) => {
+    cfg.hooks ??= {}
+    cfg.hooks.PreToolUse ??= []
+    if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.PreToolUse.push(entry)
+    return JSON.stringify(cfg, null, 2) + "\n"
+  }
+  if (!existsSync(path))
+    return { path, action: "create", detail: "PreToolUse state gate (review/trust via /hooks)", write: () => { ensureDirFor(path); writeFileSync(path, build({})) } }
+  let cur: any
+  try { cur = JSON.parse(readFileSync(path, "utf8")) }
+  catch { return { path, action: "noop", detail: "SKIPPED — hooks.json is not valid JSON; add hook manually", write: () => {} } }
+  const next = build(cur)
+  if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hook already wired", write: () => {} }
+  return { path, action: "merge", detail: "PreToolUse gate merged (review/trust via /hooks)", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
+}
+
+/** .gemini/settings.json — Gemini CLI BeforeTool gate. matcher matches the
+ *  edit tools; Gemini blocks on exit 2 + stderr. JSON merge into settings. */
+function geminiSettingsOp(ctx: Ctx): FileOp {
+  const path = join(ctx.root, ".gemini", "settings.json")
+  const entry = { matcher: "write_file|replace|edit", hooks: [{ name: "greenloop-gate", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const build = (cfg: any) => {
+    cfg.hooks ??= {}
+    cfg.hooks.BeforeTool ??= []
+    if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.BeforeTool.push(entry)
+    return JSON.stringify(cfg, null, 2) + "\n"
+  }
+  if (!existsSync(path))
+    return { path, action: "create", detail: "BeforeTool state gate", write: () => { ensureDirFor(path); writeFileSync(path, build({})) } }
+  let cur: any
+  try { cur = JSON.parse(readFileSync(path, "utf8")) }
+  catch { return { path, action: "noop", detail: "SKIPPED — settings.json is not valid JSON; add hook manually", write: () => {} } }
+  const next = build(cur)
+  if (next === readFileSync(path, "utf8")) return { path, action: "noop", detail: "hook already wired", write: () => {} }
+  return { path, action: "merge", detail: "BeforeTool gate merged into existing settings", write: () => { copyFileSync(path, path + ".bak"); writeFileSync(path, next) } }
 }
 
 /** .aider.conf.yml — conservative YAML-lite merge. We only handle the two
@@ -1747,7 +2101,7 @@ async function tui(ctx: Ctx) {
         const ev = s.detection.present ? s.detection.evidence[0] : "not detected — can still pre-seed"
         put(i + 2, ` ${ptr} ${box} ${dot} ${s.target.name.padEnd(38)} ${ev}`)
       })
-      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — Claude Code enforcement (PreToolUse state gate, Stop verify gate)`)
+      put(scans.length + 3, ` hooks: ${ctx.hooks ? "ON " : "OFF"} — pre-edit gates (Claude/OpenCode/Codex/Gemini) + Claude Stop`)
       footer.content = " ↑/↓ move · space toggle · a all · n none · h hooks · enter continue · q quit"
     } else if (screen === "plan") {
       put(0, `Plan — ${plan.length} file ops${ctx.dryRun ? "  (DRY RUN: nothing will be written)" : ""}:`)
@@ -1789,6 +2143,72 @@ async function tui(ctx: Ctx) {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+ * VERIFY — state-aware GREEN check (`greenloop verify`)
+ * A fallback harness so the Stop gate has teeth even before the project
+ * authors a scripts/verify.sh. GREEN is mechanical, not a feeling: it reads
+ * .greenloop/state.json and refuses to pass while the DoD is unmet, a failure
+ * is unresolved, or a disputed GREEN lacks an independent verdict (the
+ * False-GREEN guard, Phase 8). If a project harness exists it is also run.
+ * Exit 0 = GREEN · 1 = not GREEN · 3 = no/invalid state.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+function verify(ctx: Ctx, quiet: boolean): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) {
+    if (!quiet) console.error("GREENLOOP verify: no .greenloop/state.json — no active task to verify. Run Phase 1 (TRIAGE) first.")
+    return 3
+  }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { if (!quiet) console.error("GREENLOOP verify: .greenloop/state.json is not valid JSON."); return 3 }
+
+  const reasons: string[] = []
+
+  // Definition of Done — every item must be `pass`.
+  const dod: any[] = Array.isArray(state.dod) ? state.dod : []
+  if (dod.length === 0) reasons.push("no DoD defined (Phase 2) — GREEN is not falsifiable")
+  for (const d of dod) {
+    if (!d || d.status !== "pass")
+      reasons.push(`DoD ${d?.id ?? "?"} not pass (status=${d?.status ?? "?"})${d?.check ? ": " + String(d.check).slice(0, 60) : ""}`)
+    else if (!d.evidence)
+      reasons.push(`DoD ${d.id ?? "?"} marked pass without evidence`)
+  }
+
+  // Unresolved failures — a recorded error with no resolution is still open.
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  for (const f of failures)
+    if (f && f.error && !f.resolution)
+      reasons.push(`unresolved failure at ${f.step ?? "?"}: ${String(f.error).slice(0, 60)}`)
+
+  // False-GREEN guard (Phase 8): a disputed GREEN needs an independent verdict.
+  const v = state.verification ?? {}
+  const claims = Number(v.green_claims ?? 0)
+  if (claims >= 2 && !v.last_independent_check)
+    reasons.push(`disputed GREEN (green_claims=${claims}) without an independent verification — obtain a fresh-eyes / external verdict (Phase 8 False-GREEN guard) and record it in verification.last_independent_check`)
+
+  // Project harness, if present, must also pass.
+  const harness = ["scripts/verify.sh", ".greenloop/verify.sh"]
+    .map(r => join(ctx.root, r)).find(p => existsSync(p))
+  if (harness) {
+    const r = spawnSync(harness, [], { cwd: ctx.root, encoding: "utf8" })
+    if (r.status !== 0) {
+      const tail = ((r.stdout ?? "") + (r.stderr ?? "")).trim().split("\n").slice(-12).join("\n")
+      reasons.push(`project harness failed (${rel(ctx, harness)}, exit ${r.status ?? "?"})${tail ? ":\n" + tail : ""}`)
+    }
+  }
+
+  if (reasons.length) {
+    if (!quiet) {
+      console.error("GREENLOOP verify: RED — not GREEN. Blocking reasons:")
+      for (const r of reasons) console.error(`  • ${r}`)
+    }
+    return 1
+  }
+  if (!quiet) console.log(`GREENLOOP verify: GREEN ✓  ${dod.length} DoD item(s) pass${harness ? ` · ${rel(ctx, harness)} passed` : " · no project harness (state-verified)"}.`)
+  return 0
+}
+
+/* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
 
@@ -1804,6 +2224,8 @@ function main() {
     dryRun: has("--dry-run"),
     hooks: !has("--no-hooks"),
   }
+  // Subcommand: `greenloop verify` — state-aware GREEN check (see VERIFY).
+  if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),

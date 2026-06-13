@@ -102,15 +102,16 @@ Anyone can install from any mirror without edits via the override:
 1. Edit the files in `workflow/` (or regenerate via your pipeline), and mirror any
    workflow change into the embedded payloads in `cli/greenloop-inject.ts` — the
    injector ships its own copy and the two must stay byte-identical.
-2. Bump the version string in `workflow/GREENLOOP.md`, `install.sh` (`VERSION=`), and
-   `cli/greenloop-inject.ts` (`const VERSION`). Keep them in lockstep — the injector
-   and installer use it for marker-block upgrades, so a stale version means re-runs
-   silently no-op instead of upgrading.
+2. Bump the version string in `workflow/GREENLOOP.md`, `install.sh` (`VERSION=`),
+   `cli/greenloop-inject.ts` (`const VERSION`), and `cli/greenloop-mcp.ts`
+   (`const VERSION`). Keep them in lockstep — the injector and installer use it for
+   marker-block upgrades, so a stale version means re-runs silently no-op instead of
+   upgrading.
 3. Regenerate checksums — the installer verifies these when a sha tool is present:
    ```sh
    sha256sum workflow/GREENLOOP.md workflow/GREENLOOP-APPENDICES.md \
      workflow/greenloop.state.schema.json workflow/GREENLOOP-PROFILE-DESIGN.md \
-     cli/greenloop-inject.ts > SHA256SUMS
+     cli/greenloop-inject.ts cli/greenloop-mcp.ts > SHA256SUMS
    ```
 4. Commit, tag (`git tag v2.x.y`), push. The site redeploys on push; existing
    installs upgrade on their next `greenloop` run or `curl | sh`.

@@ -1,4 +1,4 @@
-# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.3.1)
+# GREENLOOP — Domain Profile: DESIGN (companion to GREENLOOP.md v2.4.0)
 <!-- A domain profile maps the generic GREENLOOP phases onto a specific kind of
      work — it adds domain organs to the same skeleton. The core file always wins
      on conflict. This profile activates when the task is visual: building or
@@ -217,6 +217,17 @@ design regression is a contradiction violation, because nothing visible breaks.
 Then run the Design Intent Judge cold from only {reference screenshots,
 intent-lock.md, composition-spec.md, rendered output}. If it says the output
 preserved structure but not design language, the task is RED.
+
+If an "it matches" claim was reopened (`verification.green_claims` ≥ 1), the cold
+Design Intent Judge is MANDATORY and must run from an INDEPENDENT evaluator —
+fresh context, a different model, or an actual screenshot/image diff against the
+reference. The context that claimed the match may not clear it: a reopened visual
+match is the canonical false-GREEN, and more screenshots viewed by the same
+saturated context will keep affirming a match that is not there. Resolve it with
+an external comparison, not another self-look (the Phase 8 False-GREEN guard).
+GREENLOOP ships one such comparison at .greenloop/tools/visual-fidelity.mjs — it
+renders the result (or takes a screenshot) and reports a fidelity percentage
+against the reference, so the match is a falsifiable number rather than a claim.
 
 ## P6. Single-prompt mode (the field test)
 

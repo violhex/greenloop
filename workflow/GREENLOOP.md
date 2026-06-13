@@ -1,4 +1,4 @@
-# GREENLOOP — Agent Execution Workflow v2.3.1
+# GREENLOOP — Agent Execution Workflow v2.4.0
 <!-- Drop this file into any agentic coding environment (Claude Code, Cursor, Windsurf,
      Aider, OpenHands, custom harnesses) as AGENTS.md, CLAUDE.md, .cursorrules, or a
      referenced instruction file. It is model-agnostic.
@@ -32,6 +32,16 @@
      v2.3.1: DESIGN profile hardened with Intent Preservation Layer,
      Reference Fidelity Lock, composition conformance, and required
      Design Intent Judge.
+     v2.4.0: enforcement parity — the OpenCode binding gains a real
+     pre-edit gate (.opencode/plugins/greenloop.ts); the same DONE WHEN
+     (and, on design tasks, intent lock) pre-edit gate now extends to
+     Claude Code, Codex, and Gemini CLI via their hook layers; a
+     False-GREEN guard forces an independent verdict after a reopened
+     GREEN claim; and a greenloop verify fallback harness gives the Stop
+     gate teeth. Convergence instrumentation lands too: a visual-fidelity
+     tool (.greenloop/tools/visual-fidelity.mjs) turns "it matches" into a
+     reference-vs-render percentage, a fresh-eyes judge subagent, and a
+     portable MCP server (cli/greenloop-mcp.ts) exposing verify/gate/state.
 
      Author: violhex (https://github.com/violhex) · MIT
      Source: https://github.com/violhex/greenloop -->
@@ -133,7 +143,7 @@ budgets         {tool_calls {limit, used}, judge_rounds {limit, used},
                  mode: normal|compressed}
 convergence     {state: ORBITING|CONTACT|LOCK_IN, target, done_when,
                  active_branches[], parked_branches[]}                       ← Section C
-verification    {command, last_run, result, green}
+verification    {command, last_run, result, green, green_claims, last_independent_check}
 ```
 
 **worklog.md format (append-only, one block per consequential action):**
@@ -664,6 +674,19 @@ happen.
 - The attempt counter lives in `state.failures[].attempts`, not in your self-report.
   Restarting the count by rephrasing the problem is self-deception — and now it's
   also visibly a lie in the artifact.
+- **False-GREEN guard (independent verification beats self-assessment).** Each
+  time you declare a unit done / GREEN / "it matches" and it is reopened — by the
+  user, by a re-run, or by a later check — increment `verification.green_claims`.
+  On the **second** reopened claim for the same target your own assessment is
+  exhausted: you may NOT clear it by looking again yourself. Obtain an INDEPENDENT
+  verdict before any further GREEN claim — a fresh-context sub-agent given only
+  {target, the reference/spec, your output, evidence} (Appendix A fresh-eyes), a
+  different model, or a mechanical comparison (a diff, a screenshot/image diff
+  against the reference, a deterministic check). Record it in
+  `verification.last_independent_check`. "I re-read it and it matches" is not
+  evidence; an external comparison is. This is the canonical false-GREEN failure:
+  a saturated context that cannot see its own gap and loops on re-affirmation —
+  more self-review only deepens the loop.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
@@ -688,6 +711,10 @@ When all steps report done:
    for STANDARD): hostile inputs, empty/null/unicode/huge payloads, concurrency,
    error paths, the unhappy paths the plan didn't enumerate. If you have sub-agents,
    give a fresh one only {diff, DoD} and ask it to find a reason this is not done.
+   If any prior GREEN was reopened (`verification.green_claims` ≥ 1), this pass MUST
+   be run by an INDEPENDENT evaluator — a fresh sub-agent, a different model, or a
+   mechanical check — never by the context that produced the output. Self-review
+   cannot clear a disputed GREEN (the Phase 8 False-GREEN guard).
 3. **Critic final check:** re-read `state.user_request` — the ORIGINAL ask, verbatim.
    Run the Goal Corruption Check (R7) one last time: did the implementation drift from
    the actual ask while satisfying the formalized DoD? Original intent wins.
