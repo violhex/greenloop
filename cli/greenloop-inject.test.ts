@@ -360,6 +360,11 @@ describe("OPENCODE_PLUGIN source content", () => {
     assert.match(plugin, /Section C/)
   })
 
+  test("validates goal_confirmed before allowing edits", () => {
+    assert.match(plugin, /goal_confirmed/)
+    assert.match(plugin, /state\.goal_confirmed !== true/)
+  })
+
   test("checks design dir for intent-lock.md via nonEmptyFile", () => {
     assert.match(plugin, /nonEmptyFile/)
     assert.match(plugin, /intent-lock\.md/)
@@ -423,6 +428,13 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
     try { return statSync(p).size > 0 } catch { return false }
   }
 
+  function writeGateState(content: object) {
+    const obj = !("goal_confirmed" in content)
+      ? { goal_confirmed: true, ...content }
+      : content
+    writeFileSync(statePath, JSON.stringify(obj, null, 2))
+  }
+
   async function makeGate(root: string) {
     const gl = join(root, ".greenloop")
     const statePath = join(gl, "state.json")
@@ -452,6 +464,13 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
         throw new Error(
           "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). " +
           "Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files.",
+        )
+      }
+      if (state.goal_confirmed !== true) {
+        throw new Error(
+          "GREENLOOP: goal is not ratified — the spec (goal + DONE WHEN) must be confirmed by an authority before edits. " +
+          "Interactive: run 'greenloop confirm'. Autonomous/agent-led run pre-authorized at launch: 'greenloop confirm --delegated <id>'. " +
+          "No project edit may proceed from an unratified or silently self-asserted spec.",
         )
       }
       if (existsSync(designDir) && !nonEmptyFile(join(designDir, "intent-lock.md"))) {
@@ -565,13 +584,31 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
   })
 
   test("allows edit when done_when is non-empty and no design dir", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "all tests green" } }))
+    writeGateState({ convergence: { done_when: "all tests green" } })
+    const h = await makeGate(tmpDir)
+    await assert.doesNotReject(() => call(h, "write", join(tmpDir, "src", "app.ts")))
+  })
+
+  test("blocks edit when goal_confirmed is false even with done_when set", async () => {
+    writeGateState({ convergence: { done_when: "tests pass" }, goal_confirmed: false })
+    const h = await makeGate(tmpDir)
+    await assert.rejects(
+      () => call(h, "write", join(tmpDir, "src", "app.ts")),
+      (err: Error) => {
+        assert.match(err.message, /not ratified|goal_confirmed|confirm/)
+        return true
+      },
+    )
+  })
+
+  test("allows edit when goal_confirmed is true and done_when is set", async () => {
+    writeGateState({ convergence: { done_when: "tests pass" }, goal_confirmed: true })
     const h = await makeGate(tmpDir)
     await assert.doesNotReject(() => call(h, "write", join(tmpDir, "src", "app.ts")))
   })
 
   test("throws when design dir exists but intent-lock.md is missing", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "all tests green" } }))
+    writeGateState({ convergence: { done_when: "all tests green" } })
     mkdirSync(join(glDir, "design"), { recursive: true })
     const h = await makeGate(tmpDir)
     await assert.rejects(
@@ -585,7 +622,7 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
   })
 
   test("throws when design dir exists and intent-lock.md is empty", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "done" } }))
+    writeGateState({ convergence: { done_when: "done" } })
     const designDir = join(glDir, "design")
     mkdirSync(designDir, { recursive: true })
     writeFileSync(join(designDir, "intent-lock.md"), "")
@@ -600,7 +637,7 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
   })
 
   test("allows edit when design dir exists and intent-lock.md has content", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "done" } }))
+    writeGateState({ convergence: { done_when: "done" } })
     const designDir = join(glDir, "design")
     mkdirSync(designDir, { recursive: true })
     writeFileSync(join(designDir, "intent-lock.md"), "Reference fidelity lock content")
@@ -617,7 +654,7 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
   })
 
   test("resolves filePath from args.path field", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "done" } }))
+    writeGateState({ convergence: { done_when: "done" } })
     const h = await makeGate(tmpDir)
     // Use args.path instead of args.filePath
     await assert.doesNotReject(() =>
@@ -626,7 +663,7 @@ describe("OPENCODE_PLUGIN runtime logic", () => {
   })
 
   test("resolves filePath from args.file field", async () => {
-    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "done" } }))
+    writeGateState({ convergence: { done_when: "done" } })
     const h = await makeGate(tmpDir)
     await assert.doesNotReject(() =>
       h({ tool: "edit" }, { args: { file: join(tmpDir, "src", "y.ts") } }),
@@ -724,7 +761,7 @@ describe("HOOK_PRETOOL source content", () => {
     // Exemption is now harness-agnostic: collect target paths (file_path +
     // apply_patch markers) and allow when all are under .greenloop/.
     assert.match(SOURCE, /TARGETS=/)
-    assert.match(SOURCE, /greenloop\//)
+    assert.match(SOURCE, /\.greenloop\//)
   })
 
   test("checks for done_when with grep -Eq regex", () => {

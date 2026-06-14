@@ -208,5 +208,6 @@ say "Done."
 case "$MODE" in
   cli) say "Next: cd into a repo and choose what to bind — \`greenloop --agents=<ids>\` (e.g. --agents=cursor,claude-code) or \`greenloop --all\` for every detected agent. GREENLOOP injects nothing until you choose; run \`greenloop --list\` to see ids." ;;
   repo) say "Bound the universal AGENTS.md convention only. For editor-specific bindings: \`greenloop --agents=<ids>\` (or \`--all\`). GREENLOOP does not inject into every editor automatically." ;;
+  all) say "Installed CLI + bound AGENTS.md in this repo. Next: use \`greenloop --agents=<ids>\` (e.g. --agents=cursor,claude-code) or \`greenloop --all\` in any project to bind editor-specific files. GREENLOOP injects nothing until you choose; run \`greenloop --list\` to see ids." ;;
 esac
 exit 0

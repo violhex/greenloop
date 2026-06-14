@@ -33,13 +33,16 @@ greenloop/
 ├── install.sh       POSIX installer — curl | sh target, stays at site root
 ├── wrangler.jsonc   Cloudflare Workers config — serves the repo as the site
 ├── SHA256SUMS       integrity manifest verified by install.sh
+├── AGENTS.md        Cursor Cloud / agent environment instructions
 ├── workflow/        the workflow files agents read
 │   ├── GREENLOOP.md                  core workflow — contract, S/C/R, phases 0–10
 │   ├── GREENLOOP-APPENDICES.md       orchestration · no-tools mode · role library
 │   ├── GREENLOOP-PROFILE-DESIGN.md   domain profile — activates on visual tasks
 │   └── greenloop.state.schema.json   copy-to-initialize state template
 ├── cli/
-│   └── greenloop-inject.ts           injector CLI — detection, bindings, TUI
+│   ├── greenloop-inject.ts           injector CLI — detection, bindings, TUI, gates
+│   ├── greenloop-inject.test.ts      unit/integration tests for the injector
+│   └── greenloop-mcp.ts              portable MCP server (verify / gate / state)
 └── docs/
     └── DEPLOY.md    hosting, forking, and release process
 ```

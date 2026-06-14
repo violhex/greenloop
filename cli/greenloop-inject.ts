@@ -2393,8 +2393,10 @@ function allow(ctx: Ctx, cls: string, by: string): number {
   let state: any
   try { state = JSON.parse(readFileSync(statePath, "utf8")) }
   catch { console.error("GREENLOOP allow: .greenloop/state.json is not valid JSON."); return 3 }
-  if (HAZARD_CLASSES.indexOf(cls) < 0)
-    console.error("GREENLOOP allow: note — '" + cls + "' is not a known class (" + HAZARD_CLASSES.join(", ") + "); authorizing it anyway.")
+  if (HAZARD_CLASSES.indexOf(cls) < 0) {
+    console.error("GREENLOOP allow: unknown class '" + cls + "' — known classes: " + HAZARD_CLASSES.join(", "))
+    return 2
+  }
   if (!Array.isArray(state.hazards_allowed)) state.hazards_allowed = []
   if (state.hazards_allowed.indexOf(cls) < 0) state.hazards_allowed.push(cls)
   state.hazards_allowed_by = by
@@ -2455,6 +2457,35 @@ function check(ctx: Ctx): number {
 
 interface Flags { headless: boolean; list: boolean; yes: boolean; agents: string[] | null; all: boolean }
 
+/** Resolve ratification/authorization provenance from argv. Returns "human" or
+ * "delegated:<id>". Exits 2 if --delegated is present but id is missing/empty. */
+function resolveAuthorityBy(
+  argv: string[],
+  has: (f: string) => boolean,
+  val: (p: string) => string | undefined,
+  subcmd: string,
+): string {
+  const eq = val("--delegated=")
+  if (eq !== undefined) {
+    const id = eq.trim()
+    if (!id) {
+      console.error(`GREENLOOP ${subcmd}: --delegated requires a non-empty id (e.g. greenloop ${subcmd} --delegated <launch-token>).`)
+      process.exit(2)
+    }
+    return `delegated:${id}`
+  }
+  if (has("--delegated")) {
+    const nxt = argv[argv.indexOf("--delegated") + 1]
+    const id = nxt && !nxt.startsWith("--") ? nxt.trim() : ""
+    if (!id) {
+      console.error(`GREENLOOP ${subcmd}: --delegated requires a non-empty id (e.g. greenloop ${subcmd} --delegated <launch-token>).`)
+      process.exit(2)
+    }
+    return `delegated:${id}`
+  }
+  return "human"
+}
+
 function main() {
   const argv = process.argv.slice(2)
   const has = (f: string) => argv.includes(f)
@@ -2468,25 +2499,11 @@ function main() {
   // Subcommands: `greenloop verify` (GREEN check) · `greenloop confirm` (ratify spec).
   if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
   if (argv[0] === "confirm") {
-    let by = "human"
-    const eq = val("--delegated=")
-    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
-    else if (has("--delegated")) {
-      const nxt = argv[argv.indexOf("--delegated") + 1]
-      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
-    }
-    process.exit(confirm(ctx, by))
+    process.exit(confirm(ctx, resolveAuthorityBy(argv, has, val, "confirm")))
   }
   if (argv[0] === "allow") {
     const cls = argv[1] && !argv[1].startsWith("--") ? argv[1] : ""
-    let by = "human"
-    const eq = val("--delegated=")
-    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
-    else if (has("--delegated")) {
-      const nxt = argv[argv.indexOf("--delegated") + 1]
-      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
-    }
-    process.exit(allow(ctx, cls, by))
+    process.exit(allow(ctx, cls, resolveAuthorityBy(argv, has, val, "allow")))
   }
   if (argv[0] === "check") process.exit(check(ctx))
   const flags: Flags = {

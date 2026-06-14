@@ -3,11 +3,13 @@
 ## Cursor Cloud specific instructions
 
 GREENLOOP is **not a server app**. It is a static docs site (`index.html`) + a POSIX
-installer (`install.sh`, the `curl | sh` target) + a single-file TypeScript CLI
-(`cli/greenloop-inject.ts`). There is **no `package.json`, no build step, no test
-suite, and no linter** in this repo — the strings `tsc`/`eslint`/`pytest` etc. appear
+installer (`install.sh`, the `curl | sh` target) + TypeScript CLI tools in `cli/`
+(`greenloop-inject.ts`, `greenloop-mcp.ts`). There is **no `package.json`, no build
+step, and no linter** in this repo — the strings `tsc`/`eslint`/`pytest` etc. appear
 only as illustrative text inside the embedded workflow markdown, not as project
-scripts. Repo layout and the release process are documented in `README.md` and
+scripts. Tests live in `cli/greenloop-inject.test.ts` (run with
+`bun test cli/greenloop-inject.test.ts` or `node --test cli/greenloop-inject.test.ts`).
+Repo layout and the release process are documented in `README.md` and
 `docs/DEPLOY.md`; don't duplicate them here.
 
 ### Runtimes
@@ -26,6 +28,7 @@ scripts. Repo layout and the release process are documented in `README.md` and
   only), `--dry-run` (plan, write nothing), `--yes` (apply). Use `--dir=PATH` to target
   a repo other than the cwd — always test against a throwaway dir, never inject into
   `/workspace` itself.
+- **Tests:** `bun test cli/greenloop-inject.test.ts` (or `node --test cli/greenloop-inject.test.ts`).
 - **Site (canonical dev):** `npx wrangler dev`. Gotcha: wrangler writes a `.wrangler/`
   dir into the repo root (the `./` assets directory it watches), which causes a
   continuous "Reloading local server" loop, and `.wrangler/` is **not** gitignored —
