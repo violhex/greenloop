@@ -92,6 +92,15 @@ function stateSummary(dir: string): string {
   const v = state.verification ?? {}
   const dod: any[] = Array.isArray(state.dod) ? state.dod : []
   const passed = dod.filter(d => d && d.status === "pass").length
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  const maxAtt = failures.reduce((m, f) => Math.max(m, Number(f?.attempts ?? 0)), 0)
+  const openF = failures.filter(f => f && f.error && !f.resolution).length
+  const claims = Number(v.green_claims ?? 0)
+  let slip = 0
+  if (claims >= 1) slip += claims * 2
+  if (claims >= 2 && !v.last_independent_check) slip += 3
+  if (maxAtt >= 3) slip += maxAtt
+  slip += openF
   return [
     `phase:            ${state.phase ?? "?"}`,
     `convergence:      ${c.state ?? "?"}`,
@@ -100,6 +109,7 @@ function stateSummary(dir: string): string {
     `DoD progress:     ${passed}/${dod.length} pass`,
     `green_claims:     ${v.green_claims ?? 0}  (reopened GREEN claims — drift signal)`,
     `independent_check: ${v.last_independent_check || "(none)"}`,
+    `slip score:       ${slip} ${slip >= 4 ? "(SLIPPING — run 'greenloop check' for the one intervention)" : "(ok)"}`,
   ].join("\n")
 }
 

@@ -797,7 +797,10 @@ happen.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
-duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9.
+duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9. At this
+cadence also run \`greenloop check\` — a model-independent slip tripwire (reopened
+GREENs, fix-attempt thrash, unresolved failures) that, when it trips, names the one
+intervention to do instead of letting the loop spin.
 
 **Budget awareness:** tick budgets in state as you go; the 75% compressed-mode trigger
 from 1e applies here most of all.
@@ -2377,6 +2380,52 @@ function allow(ctx: Ctx, cls: string, by: string): number {
   return 0
 }
 
+/* ── CHECK — `greenloop check` is the slip tripwire (gate C) ─────────────────
+ * A model-independent slip score from state (it never asks the model "are you
+ * ok?"; it watches behavior): reopened GREENs, fix-attempt thrash, unresolved
+ * failures. When it trips it names the ONE intervention to do — route attention,
+ * don't let the loop spin. Exit 0 = fine · 1 = slipping · 3 = no/invalid state. */
+
+function slipReport(state: any): { score: number; signals: string[]; action: string } {
+  const v = state.verification ?? {}
+  const claims = Number(v.green_claims ?? 0)
+  const indep = !!v.last_independent_check
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  const maxAttempts = failures.reduce((m, f) => Math.max(m, Number(f?.attempts ?? 0)), 0)
+  const open = failures.filter(f => f && f.error && !f.resolution)
+  let score = 0
+  const signals: string[] = []
+  if (claims >= 1) { score += claims * 2; signals.push(`green_claims=${claims} (reopened GREEN — drift)`) }
+  if (claims >= 2 && !indep) { score += 3; signals.push("disputed GREEN without an independent verdict") }
+  if (maxAttempts >= 3) { score += maxAttempts; signals.push(`one error has survived ${maxAttempts} fix attempts (thrash)`) }
+  if (open.length) { score += open.length; signals.push(`${open.length} unresolved failure(s)`) }
+  let action = ""
+  if (claims >= 2 && !indep) action = "STOP self-assessing — get an INDEPENDENT verdict (spawn the greenloop-judge subagent or a different model) before any further GREEN claim, and record verification.last_independent_check."
+  else if (maxAttempts >= 5) action = `Revert to the last checkpoint and take a structurally different approach — the same error survived ${maxAttempts} attempts.`
+  else if (maxAttempts >= 3) { const f = failures.find(x => Number(x?.attempts ?? 0) >= 3); action = `Stop editing and write a root-cause analysis for ${f?.step ?? "the failing step"} naming the wrong assumption (Phase 8 3-attempt guard).` }
+  else if (open.length) action = `Resolve the failure at ${open[0].step ?? "?"}, or record it as found-not-fixed.`
+  else if (signals.length) action = "Accumulated drift with no single dominant cause — do a fresh-eyes review of the result (greenloop-judge or a different model) before claiming GREEN."
+  return { score, signals, action }
+}
+
+function check(ctx: Ctx): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP check: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP check: .greenloop/state.json is not valid JSON."); return 3 }
+  const THRESHOLD = 4
+  const { score, signals, action } = slipReport(state)
+  if (score < THRESHOLD) {
+    console.log(`GREENLOOP check: slip score ${score} (< ${THRESHOLD}) — no intervention needed.${signals.length ? " Signals: " + signals.join("; ") : ""}`)
+    return 0
+  }
+  console.error(`GREENLOOP check: SLIPPING — slip score ${score} (>= ${THRESHOLD}).`)
+  for (const s of signals) console.error("  • " + s)
+  if (action) console.error("Do ONE thing now: " + action)
+  return 1
+}
+
 /* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
@@ -2416,6 +2465,7 @@ function main() {
     }
     process.exit(allow(ctx, cls, by))
   }
+  if (argv[0] === "check") process.exit(check(ctx))
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),

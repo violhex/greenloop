@@ -712,7 +712,10 @@ happen.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
-duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9.
+duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9. At this
+cadence also run `greenloop check` — a model-independent slip tripwire (reopened
+GREENs, fix-attempt thrash, unresolved failures) that, when it trips, names the one
+intervention to do instead of letting the loop spin.
 
 **Budget awareness:** tick budgets in state as you go; the 75% compressed-mode trigger
 from 1e applies here most of all.
