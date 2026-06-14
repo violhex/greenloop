@@ -132,6 +132,7 @@ user_request    the original ask, VERBATIM — the goal-corruption reference poi
 goal, scope_fence, constraints
 goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
 goal_confirmed_by  provenance of ratification: `human` or `delegated:<id>` (set via `greenloop confirm [--delegated <id>]`)
+hazards_allowed  authorized irreversible-action classes (gate B: force-push, destructive-fs, sql-destructive, deploy-publish, privileged); set via `greenloop allow <class>`
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,

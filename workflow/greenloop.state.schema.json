@@ -6,6 +6,7 @@
   "goal_confirmed": false,
   "goal_confirmed_by": "",
   "scope_fence": "",
+  "hazards_allowed": [],
   "constraints": [],
 
   "dod": [

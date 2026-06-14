@@ -217,6 +217,7 @@ user_request    the original ask, VERBATIM — the goal-corruption reference poi
 goal, scope_fence, constraints
 goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
 goal_confirmed_by  provenance of ratification: \`human\` or \`delegated:<id>\` (set via \`greenloop confirm [--delegated <id>]\`)
+hazards_allowed  authorized irreversible-action classes (gate B: force-push, destructive-fs, sql-destructive, deploy-publish, privileged); set via \`greenloop allow <class>\`
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -993,6 +994,7 @@ const GREENLOOP_SCHEMA = `{
   "goal_confirmed": false,
   "goal_confirmed_by": "",
   "scope_fence": "",
+  "hazards_allowed": [],
   "constraints": [],
 
   "dod": [
@@ -1403,6 +1405,43 @@ fi
 exit 0   # no harness and no state/CLI — allow stop
 `
 
+/* ── Hazard gate (B): the irreversibility checkpoint ────────────────────────
+ * Harness-agnostic gate for the SHELL/bash tool. Reversible sandbox edits flow
+ * through the edit gate; irreversible/hazardous actions (force-push, destructive
+ * fs, destructive SQL, deploy/publish, privileged) are blocked unless the
+ * authority pre-authorized that class via `greenloop allow <class>` — even in a
+ * delegated autonomous run. This is where the human/authority "earns the check"
+ * at the irreversibility boundary, not per edit. Block: exit 2 + stderr. */
+const HOOK_HAZARD = `#!/bin/sh
+# GREENLOOP hazard gate — blocks irreversible/hazardous SHELL actions unless the
+# authority pre-authorized that hazard class ('greenloop allow <class>').
+INPUT=$(cat)
+ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  ROOT=$(printf '%s' "$INPUT" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
+  [ -z "$ROOT" ] && ROOT="."
+fi
+STATE="$ROOT/.greenloop/state.json"
+
+CLASS=""
+if   printf '%s' "$INPUT" | grep -Eq 'git[^"]*push[^"]*(--force|--force-with-lease| -f)'; then CLASS="force-push"
+elif printf '%s' "$INPUT" | grep -Eq 'rm[[:space:]]+-[A-Za-z]*[rf]'; then CLASS="destructive-fs"
+elif printf '%s' "$INPUT" | grep -Eiq '(DROP|TRUNCATE)[[:space:]]+(TABLE|DATABASE|SCHEMA)|DELETE[[:space:]]+FROM'; then CLASS="sql-destructive"
+elif printf '%s' "$INPUT" | grep -Eq '(npm|pnpm|yarn)[[:space:]]+publish|docker[^"]*push|terraform[[:space:]]+apply|kubectl[[:space:]]+(apply|delete)|wrangler[[:space:]]+deploy|vercel[^"]*--prod'; then CLASS="deploy-publish"
+elif printf '%s' "$INPUT" | grep -Eq '(^|[^A-Za-z])sudo[[:space:]]|chmod[[:space:]]+-R|chown[[:space:]]+-R'; then CLASS="privileged"
+fi
+[ -z "$CLASS" ] && exit 0
+
+if [ -f "$STATE" ]; then
+  ARR=$(tr -d '\\n' < "$STATE" | grep -oE '"hazards_allowed"[[:space:]]*:[[:space:]]*\\[[^]]*\\]' | grep -oE '\\[[^]]*\\]')
+  ALLOWED=$(printf '%s' "$ARR" | grep -oE '"[^"]+"' | tr -d '"')
+  if printf '%s\\n' "$ALLOWED" | grep -qxF "$CLASS"; then exit 0; fi
+  if printf '%s\\n' "$ALLOWED" | grep -qxF '*'; then exit 0; fi
+fi
+echo "GREENLOOP: blocked a '$CLASS' action — irreversible/hazardous operations require authorization even after goal ratification. Authorize it: 'greenloop allow $CLASS' (interactive) or 'greenloop allow $CLASS --delegated <id>' (autonomous run). Reversible work needs no authorization." >&2
+exit 2
+`
+
 /* ── OpenCode enforcement plugin ────────────────────────────────────────────
  * OpenCode auto-loads TS plugins from .opencode/plugins/. This is OpenCode's
  * analog of the Claude Code PreToolUse hook: a `tool.execute.before` handler
@@ -1430,7 +1469,28 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
   const root = directory || worktree || process.cwd()
   return {
     "tool.execute.before": async (input: any, output: any) => {
-      if (!input || !EDIT_TOOLS.has(input.tool)) return
+      if (!input) return
+      // Hazard gate (B): irreversible/hazardous shell actions need authorization.
+      if (input.tool === "bash") {
+        const cmd = String((output && output.args && (output.args.command || output.args.cmd)) || "").toLowerCase()
+        const HZ: Array<[string, (c: string) => boolean]> = [
+          ["force-push", c => c.includes("push") && (c.includes("--force") || c.includes(" -f"))],
+          ["destructive-fs", c => c.includes("rm -rf") || c.includes("rm -fr") || c.includes("rm -r ")],
+          ["sql-destructive", c => c.includes("drop table") || c.includes("drop database") || c.includes("truncate") || c.includes("delete from")],
+          ["deploy-publish", c => c.includes("npm publish") || c.includes("pnpm publish") || c.includes("yarn publish") || c.includes("docker push") || c.includes("terraform apply") || c.includes("kubectl apply") || c.includes("kubectl delete") || c.includes("wrangler deploy") || c.includes("--prod")],
+          ["privileged", c => c.includes("sudo ") || c.includes("chmod -r") || c.includes("chown -r")],
+        ]
+        for (const pair of HZ) {
+          if (pair[1](cmd)) {
+            let allowed: any[] = []
+            try { const st = JSON.parse(readFileSync(join(root, ".greenloop", "state.json"), "utf8")); allowed = Array.isArray(st.hazards_allowed) ? st.hazards_allowed : [] } catch (e) {}
+            if (allowed.indexOf(pair[0]) >= 0 || allowed.indexOf("*") >= 0) return
+            throw new Error("GREENLOOP: blocked a '" + pair[0] + "' action — irreversible/hazardous operations require authorization even after goal ratification. Authorize it: 'greenloop allow " + pair[0] + "' or 'greenloop allow " + pair[0] + " --delegated <id>' (autonomous run).")
+          }
+        }
+        return
+      }
+      if (!EDIT_TOOLS.has(input.tool)) return
       const args = (output && output.args) || {}
       const target = String(args.filePath || args.path || args.file || "")
       // Edits to the state layer itself are never blocked.
@@ -1751,6 +1811,7 @@ const TARGETS: AgentTarget[] = [
       if (ctx.hooks) {
         ops.push(
           execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+          execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
           execFile(join(ctx.root, ".greenloop", "hooks", "stop-verify.sh"), HOOK_STOP),
           claudeSettingsOp(ctx),
           ownedFile(join(ctx.root, ".claude", "agents", "greenloop-judge.md"), CLAUDE_JUDGE_AGENT, s => s.includes("GREENLOOP")),
@@ -1849,6 +1910,7 @@ const TARGETS: AgentTarget[] = [
       const ops = [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())]
       if (ctx.hooks) ops.push(
         execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
         geminiSettingsOp(ctx),
       )
       return ops
@@ -1866,6 +1928,7 @@ const TARGETS: AgentTarget[] = [
       const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
       if (ctx.hooks) ops.push(
         execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
         codexHooksOp(ctx),
       )
       return ops
@@ -1947,6 +2010,7 @@ const TARGETS: AgentTarget[] = [
 function claudeSettingsOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".claude", "settings.json")
   const pretool = { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "Bash", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/hazard-gate.sh` }] }
   const stop = { matcher: "", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/stop-verify.sh` }] }
   const build = (settings: any) => {
     settings.hooks ??= {}
@@ -1954,6 +2018,7 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
     settings.hooks.Stop ??= []
     const hasOurs = (arr: any[], frag: string) => arr.some(e => JSON.stringify(e).includes(frag))
     if (!hasOurs(settings.hooks.PreToolUse, "pretool-gate.sh")) settings.hooks.PreToolUse.push(pretool)
+    if (!hasOurs(settings.hooks.PreToolUse, "hazard-gate.sh")) settings.hooks.PreToolUse.push(hazard)
     if (!hasOurs(settings.hooks.Stop, "stop-verify.sh")) settings.hooks.Stop.push(stop)
     return JSON.stringify(settings, null, 2) + "\n"
   }
@@ -1975,10 +2040,12 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
 function codexHooksOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".codex", "hooks.json")
   const entry = { matcher: "Edit|Write", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "Bash", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/hazard-gate.sh` }] }
   const build = (cfg: any) => {
     cfg.hooks ??= {}
     cfg.hooks.PreToolUse ??= []
     if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.PreToolUse.push(entry)
+    if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("hazard-gate.sh"))) cfg.hooks.PreToolUse.push(hazard)
     return JSON.stringify(cfg, null, 2) + "\n"
   }
   if (!existsSync(path))
@@ -1996,10 +2063,12 @@ function codexHooksOp(ctx: Ctx): FileOp {
 function geminiSettingsOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".gemini", "settings.json")
   const entry = { matcher: "write_file|replace|edit", hooks: [{ name: "greenloop-gate", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "run_shell_command", hooks: [{ name: "greenloop-hazard", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/hazard-gate.sh` }] }
   const build = (cfg: any) => {
     cfg.hooks ??= {}
     cfg.hooks.BeforeTool ??= []
     if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.BeforeTool.push(entry)
+    if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("hazard-gate.sh"))) cfg.hooks.BeforeTool.push(hazard)
     return JSON.stringify(cfg, null, 2) + "\n"
   }
   if (!existsSync(path))
@@ -2283,6 +2352,31 @@ function confirm(ctx: Ctx, by: string): number {
   return 0
 }
 
+/* ── ALLOW — `greenloop allow <class>` authorizes a hazard class (gate B) ────
+ * Reversible work never needs this; irreversible/hazardous shell actions stay
+ * blocked until the authority allows their class. Like confirm, it records
+ * provenance (human vs delegated) and is the irreversibility checkpoint.
+ * Classes: force-push, destructive-fs, sql-destructive, deploy-publish,
+ * privileged (or "*" to allow all — discouraged). */
+const HAZARD_CLASSES = ["force-push", "destructive-fs", "sql-destructive", "deploy-publish", "privileged", "*"]
+
+function allow(ctx: Ctx, cls: string, by: string): number {
+  if (!cls) { console.error("usage: greenloop allow <class> [--delegated <id>]   classes: " + HAZARD_CLASSES.join(", ")); return 2 }
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP allow: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP allow: .greenloop/state.json is not valid JSON."); return 3 }
+  if (HAZARD_CLASSES.indexOf(cls) < 0)
+    console.error("GREENLOOP allow: note — '" + cls + "' is not a known class (" + HAZARD_CLASSES.join(", ") + "); authorizing it anyway.")
+  if (!Array.isArray(state.hazards_allowed)) state.hazards_allowed = []
+  if (state.hazards_allowed.indexOf(cls) < 0) state.hazards_allowed.push(cls)
+  state.hazards_allowed_by = by
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
+  console.log("GREENLOOP: authorized hazard class '" + cls + "' (by " + by + "). Allowed: [" + state.hazards_allowed.join(", ") + "]")
+  return 0
+}
+
 /* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
@@ -2310,6 +2404,17 @@ function main() {
       by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
     }
     process.exit(confirm(ctx, by))
+  }
+  if (argv[0] === "allow") {
+    const cls = argv[1] && !argv[1].startsWith("--") ? argv[1] : ""
+    let by = "human"
+    const eq = val("--delegated=")
+    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
+    else if (has("--delegated")) {
+      const nxt = argv[argv.indexOf("--delegated") + 1]
+      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
+    }
+    process.exit(allow(ctx, cls, by))
   }
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
