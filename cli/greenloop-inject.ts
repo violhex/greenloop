@@ -215,7 +215,8 @@ don't shrink:
 \`\`\`
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
-goal_confirmed  true only after the USER ratifies goal + DONE WHEN — gates execution (set via \`greenloop confirm\`)
+goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
+goal_confirmed_by  provenance of ratification: \`human\` or \`delegated:<id>\` (set via \`greenloop confirm [--delegated <id>]\`)
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -574,15 +575,24 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-**2d. Confirm the spec with the user (human-confirmed goal).** Before any execution,
-present the reconstructed goal and the DoD/DONE WHEN back to the user in plain language
-and get explicit confirmation. Only then is the spec human-ratified: the user runs
-\`greenloop confirm\` (or you set \`goal_confirmed: true\` strictly on their say-so).
-**Never set \`goal_confirmed\` yourself without the user's explicit confirmation** — a
-model-written goal is not a confirmed goal. The pre-edit gate stays closed until state
-shows a human-confirmed goal AND a non-empty \`done_when\`: no project edit proceeds from
-an unconfirmed or model-only spec. (Editing \`.greenloop/\` to record the spec is always
-allowed, so you can reach this point.)
+**2d. Ratify the spec before executing (authority-confirmed goal).** The goal +
+DoD/DONE WHEN must be ratified by an authority before any execution; the pre-edit gate
+stays closed until state shows \`goal_confirmed: true\` AND a non-empty \`done_when\`.
+Ratification records *provenance* (who/what ratified), not a proof of human presence —
+two paths, agent-first:
+
+- **Autonomous / agent-led run** (the common case as loops become agent-primary): the
+  launching authority pre-authorizes once with \`greenloop confirm --delegated <id>\`
+  (recorded as \`delegated:<id>\` — a launch token, policy reference, or orchestrator id).
+  The loop then runs without a human in the middle; the human reviews at the commit
+  boundary, not per edit.
+- **Interactive run:** present the reconstructed goal and DONE WHEN to the user, get
+  explicit confirmation, then run \`greenloop confirm\` (recorded as \`human\`).
+
+Do not silently self-assert the goal: interactively, never set \`goal_confirmed\` without
+the user's confirmation; in a delegated run, ratify only under a real delegation the
+authority granted at launch — the provenance is auditable at review. (Editing
+\`.greenloop/\` to record the spec is always allowed, so you can reach this point.)
 
 > **State write:** \`user_request\` verbatim, goal, \`goal_confirmed\` (false until the user
 > ratifies), DoD (all items \`pending\`), constraints, assumptions entered into the market
@@ -981,6 +991,7 @@ const GREENLOOP_SCHEMA = `{
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
   "goal_confirmed": false,
+  "goal_confirmed_by": "",
   "scope_fence": "",
   "constraints": [],
 
@@ -1351,7 +1362,7 @@ fi
 # Human-confirmed goal: the spec (goal + DONE WHEN) must be ratified by the user,
 # not just written by the agent. Set goal_confirmed via 'greenloop confirm'.
 if ! grep -Eq '"goal_confirmed"[[:space:]]*:[[:space:]]*true' "$STATE"; then
-  echo "GREENLOOP: goal is not human-confirmed — present the reconstructed goal and the DONE WHEN to the user, get explicit confirmation, then run 'greenloop confirm' (sets goal_confirmed=true). No project edit may proceed from an unconfirmed or model-only spec." >&2
+  echo "GREENLOOP: goal is not ratified — the spec (goal + DONE WHEN) must be confirmed by an authority before edits. Interactive run: present them to the user and run 'greenloop confirm'. Autonomous/agent-led run pre-authorized at launch: 'greenloop confirm --delegated <id>'. No project edit may proceed from an unratified or silently self-asserted spec." >&2
   exit 2
 fi
 
@@ -1449,8 +1460,9 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
       }
       if (state.goal_confirmed !== true) {
         throw new Error(
-          "GREENLOOP: goal is not human-confirmed — present the reconstructed goal and the DONE WHEN to the user, " +
-          "get explicit confirmation, then run 'greenloop confirm'. No project edit may proceed from an unconfirmed or model-only spec.",
+          "GREENLOOP: goal is not ratified — the spec (goal + DONE WHEN) must be confirmed by an authority before edits. " +
+          "Interactive: run 'greenloop confirm'. Autonomous/agent-led run pre-authorized at launch: 'greenloop confirm --delegated <id>'. " +
+          "No project edit may proceed from an unratified or silently self-asserted spec.",
         )
       }
       const designDir = join(gl, "design")
@@ -2234,15 +2246,19 @@ function verify(ctx: Ctx, quiet: boolean): number {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
- * CONFIRM — `greenloop confirm` records the human's ratification of the spec.
- * The pre-edit gate stays closed until state.goal_confirmed === true; this is
- * the human's deliberate action. It refuses to set the flag unless a goal AND
- * a DONE WHEN already exist, and echoes both so the human ratifies real values,
- * not a blank or a model guess. Exit 0 = confirmed · 1 = incomplete spec · 3 =
- * no/invalid state.
+ * CONFIRM — `greenloop confirm` ratifies the spec so the pre-edit gate opens.
+ * Ratification is an AUTHORITY act, recorded with provenance — not a proof of
+ * human presence (which is unverifiable). Two paths, agent-first:
+ *   greenloop confirm                  → interactive: by = "human"
+ *   greenloop confirm --delegated <id> → autonomous/agent-led run pre-authorized
+ *                                         by <id> (launch token, policy ref,
+ *                                         orchestrator id): by = "delegated:<id>"
+ * Either way it refuses to ratify an incomplete spec (no goal or no DONE WHEN),
+ * echoes both, and records goal_confirmed/by/at so a reviewer can see HOW the
+ * goal was ratified. Exit 0 = confirmed · 1 = incomplete spec · 3 = no/invalid state.
  * ════════════════════════════════════════════════════════════════════════ */
 
-function confirm(ctx: Ctx): number {
+function confirm(ctx: Ctx, by: string): number {
   const statePath = join(ctx.root, ".greenloop", "state.json")
   if (!existsSync(statePath)) { console.error("GREENLOOP confirm: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
   let state: any
@@ -2251,18 +2267,19 @@ function confirm(ctx: Ctx): number {
   const goal = typeof state.goal === "string" ? state.goal.trim() : ""
   const dw = typeof state?.convergence?.done_when === "string" ? state.convergence.done_when.trim() : ""
   if (!goal || !dw) {
-    console.error("GREENLOOP confirm: cannot confirm an incomplete spec.")
+    console.error("GREENLOOP confirm: cannot ratify an incomplete spec.")
     if (!goal) console.error("  • state.goal is empty — write the goal first (Phase 2).")
     if (!dw) console.error("  • convergence.done_when is empty — write a falsifiable DONE WHEN first (Section C).")
     return 1
   }
-  console.log("Confirm this spec as human-ratified:")
+  console.log(by === "human" ? "Ratify this spec (human):" : `Ratify this spec (${by}):`)
   console.log("  goal:      " + goal)
   console.log("  done_when: " + dw)
   state.goal_confirmed = true
+  state.goal_confirmed_by = by
   state.goal_confirmed_at = new Date().toISOString()
   writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
-  console.log("GREENLOOP: goal_confirmed = true — the pre-edit gate will now allow project edits.")
+  console.log(`GREENLOOP: goal_confirmed = true (by ${by}) — the pre-edit gate will now allow project edits.`)
   return 0
 }
 
@@ -2284,7 +2301,16 @@ function main() {
   }
   // Subcommands: `greenloop verify` (GREEN check) · `greenloop confirm` (ratify spec).
   if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
-  if (argv[0] === "confirm") process.exit(confirm(ctx))
+  if (argv[0] === "confirm") {
+    let by = "human"
+    const eq = val("--delegated=")
+    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
+    else if (has("--delegated")) {
+      const nxt = argv[argv.indexOf("--delegated") + 1]
+      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
+    }
+    process.exit(confirm(ctx, by))
+  }
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),

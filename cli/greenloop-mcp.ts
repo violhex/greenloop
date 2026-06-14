@@ -74,7 +74,7 @@ function gateResult(dir: string, filePath: string): { allow: boolean; reason: st
   if (typeof doneWhen !== "string" || doneWhen.trim() === "")
     return { allow: false, reason: "convergence.done_when is empty — no edit from ORBITING (Section C). Reach LOCK_IN: write a falsifiable DONE WHEN first" }
   if (state.goal_confirmed !== true)
-    return { allow: false, reason: "goal is not human-confirmed — ratify the goal + DONE WHEN with the user (run 'greenloop confirm') before editing project files" }
+    return { allow: false, reason: "goal is not ratified — confirm the goal + DONE WHEN by an authority before editing. Interactive: 'greenloop confirm'. Autonomous/agent-led: 'greenloop confirm --delegated <id>'" }
   const designDir = join(dir, ".greenloop", "design")
   if (existsSync(designDir)) {
     const lock = join(designDir, "intent-lock.md")
@@ -95,7 +95,7 @@ function stateSummary(dir: string): string {
   return [
     `phase:            ${state.phase ?? "?"}`,
     `convergence:      ${c.state ?? "?"}`,
-    `goal_confirmed:   ${state.goal_confirmed === true ? "yes (human-ratified)" : "NO — gate closed until 'greenloop confirm'"}`,
+    `goal_confirmed:   ${state.goal_confirmed === true ? "yes (by " + (state.goal_confirmed_by || "unknown") + ")" : "NO — gate closed until 'greenloop confirm' (or '--delegated <id>')"}`,
     `done_when:        ${c.done_when ? JSON.stringify(c.done_when) : "(empty)"}`,
     `DoD progress:     ${passed}/${dod.length} pass`,
     `green_claims:     ${v.green_claims ?? 0}  (reopened GREEN claims — drift signal)`,

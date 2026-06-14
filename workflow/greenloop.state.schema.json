@@ -4,6 +4,7 @@
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
   "goal_confirmed": false,
+  "goal_confirmed_by": "",
   "scope_fence": "",
   "constraints": [],
 

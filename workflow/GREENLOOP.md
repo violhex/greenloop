@@ -130,7 +130,8 @@ don't shrink:
 ```
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
-goal_confirmed  true only after the USER ratifies goal + DONE WHEN — gates execution (set via `greenloop confirm`)
+goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
+goal_confirmed_by  provenance of ratification: `human` or `delegated:<id>` (set via `greenloop confirm [--delegated <id>]`)
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -489,15 +490,24 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-**2d. Confirm the spec with the user (human-confirmed goal).** Before any execution,
-present the reconstructed goal and the DoD/DONE WHEN back to the user in plain language
-and get explicit confirmation. Only then is the spec human-ratified: the user runs
-`greenloop confirm` (or you set `goal_confirmed: true` strictly on their say-so).
-**Never set `goal_confirmed` yourself without the user's explicit confirmation** — a
-model-written goal is not a confirmed goal. The pre-edit gate stays closed until state
-shows a human-confirmed goal AND a non-empty `done_when`: no project edit proceeds from
-an unconfirmed or model-only spec. (Editing `.greenloop/` to record the spec is always
-allowed, so you can reach this point.)
+**2d. Ratify the spec before executing (authority-confirmed goal).** The goal +
+DoD/DONE WHEN must be ratified by an authority before any execution; the pre-edit gate
+stays closed until state shows `goal_confirmed: true` AND a non-empty `done_when`.
+Ratification records *provenance* (who/what ratified), not a proof of human presence —
+two paths, agent-first:
+
+- **Autonomous / agent-led run** (the common case as loops become agent-primary): the
+  launching authority pre-authorizes once with `greenloop confirm --delegated <id>`
+  (recorded as `delegated:<id>` — a launch token, policy reference, or orchestrator id).
+  The loop then runs without a human in the middle; the human reviews at the commit
+  boundary, not per edit.
+- **Interactive run:** present the reconstructed goal and DONE WHEN to the user, get
+  explicit confirmation, then run `greenloop confirm` (recorded as `human`).
+
+Do not silently self-assert the goal: interactively, never set `goal_confirmed` without
+the user's confirmation; in a delegated run, ratify only under a real delegation the
+authority granted at launch — the provenance is auditable at review. (Editing
+`.greenloop/` to record the spec is always allowed, so you can reach this point.)
 
 > **State write:** `user_request` verbatim, goal, `goal_confirmed` (false until the user
 > ratifies), DoD (all items `pending`), constraints, assumptions entered into the market
