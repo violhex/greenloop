@@ -20,7 +20,9 @@
  *   --list            detect + print, change nothing
  *   --dry-run         plan + print every file op, write nothing
  *   --yes             apply without confirmation (headless)
- *   --agents=a,b,c    restrict to specific target ids (see --list for ids)
+ *   --agents=a,b,c    bind ONLY these target ids (see --list). Selection is required:
+ *   --all             bind every DETECTED agent (●). Without --agents or --all,
+ *                     GREENLOOP injects nothing — you must choose explicitly.
  *   --hooks / --no-hooks   enable/disable agent enforcement gates — Claude Code
  *                          (PreToolUse+Stop), OpenCode, Codex, Gemini (default: on)
  *   --dir=PATH        target project root (default: cwd)
@@ -1795,7 +1797,6 @@ const TARGETS: AgentTarget[] = [
     hint: "Codex CLI, OpenCode, Jules, Zed, Amp & any AGENTS.md-aware agent",
     detect: () => ({ present: true, evidence: ["always applicable — the common convention"] }),
     plan: ctx => [
-      ...corePackageOps(ctx),
       markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd()),
     ],
   },
@@ -2111,14 +2112,21 @@ interface Scan { target: AgentTarget; detection: Detection; selected: boolean }
 function scanAll(ctx: Ctx): Scan[] {
   return TARGETS.map(target => {
     const detection = target.detect(ctx)
-    return { target, detection, selected: detection.present }
+    // Nothing is selected by default: the user must choose which agents to bind
+    // (--agents=<ids>, --all, or TUI). Detection only informs the choice.
+    return { target, detection, selected: false }
   })
 }
 
 /** Dedupe by path: the same op planned by several targets (AGENTS.md from
- *  universal/codex/opencode) is executed exactly once. */
+ *  universal/codex/opencode) is executed exactly once. The core workflow files
+ *  (corePackageOps) are the payload — laid down whenever ANY target is selected,
+ *  independent of which agent(s) the user chose, so a single-agent selection
+ *  still gets GREENLOOP.md and the state dir. */
 function buildPlan(ctx: Ctx, scans: Scan[]): FileOp[] {
   const byPath = new Map<string, FileOp>()
+  if (scans.some(s => s.selected))
+    for (const op of corePackageOps(ctx)) if (!byPath.has(op.path)) byPath.set(op.path, op)
   for (const s of scans) if (s.selected)
     for (const op of s.target.plan(ctx)) if (!byPath.has(op.path)) byPath.set(op.path, op)
   return [...byPath.values()]
@@ -2144,7 +2152,9 @@ const rel = (ctx: Ctx, p: string) => p.startsWith(ctx.root) ? p.slice(ctx.root.l
 function headless(ctx: Ctx, flags: Flags) {
   const scans = scanAll(ctx).map(s => ({
     ...s,
-    selected: flags.agents ? flags.agents.includes(s.target.id) : s.selected,
+    // Explicit selection only: --agents=<ids> picks specific agents; --all binds
+    // every detected agent. Without either, nothing is selected.
+    selected: flags.agents ? flags.agents.includes(s.target.id) : (flags.all && s.detection.present),
   }))
   console.log(`GREENLOOP injector v${VERSION} — ${ctx.root}\n`)
   for (const s of scans) {
@@ -2154,6 +2164,15 @@ function headless(ctx: Ctx, flags: Flags) {
     if (s.detection.evidence.length) console.log(`              └ ${s.detection.evidence.join("; ")}`)
   }
   if (flags.list) return
+  // Enforce explicit selection — never inject into everything implicitly.
+  if (!scans.some(s => s.selected)) {
+    console.log(`\nNo agents selected — GREENLOOP will not inject into anything on its own.`)
+    console.log(`Choose explicitly:`)
+    console.log(`  --agents=<ids>   bind specific agents (e.g. --agents=cursor,claude-code; ids above)`)
+    console.log(`  --all            bind every detected agent (●) in this environment`)
+    if (flags.agents) console.log(`(--agents matched no known target id; run --list to see valid ids)`)
+    return
+  }
   const plan = buildPlan(ctx, scans)
   console.log(`\nPlan (${plan.length} file ops${ctx.dryRun ? ", DRY RUN" : ""}):`)
   for (const op of plan) console.log(`  ${ICON[op.action]} ${rel(ctx, op.path).padEnd(44)} ${op.detail}`)
@@ -2202,7 +2221,7 @@ async function tui(ctx: Ctx) {
   function render() {
     clearRows()
     if (screen === "select") {
-      put(0, "Select agents to bind GREENLOOP to (detected agents pre-selected):")
+      put(0, "Select agents to bind GREENLOOP to (● = detected; nothing selected by default — space to choose):")
       scans.forEach((s, i) => {
         const ptr = i === cursor ? "❯" : " "
         const box = s.selected ? "[x]" : "[ ]"
@@ -2237,7 +2256,10 @@ async function tui(ctx: Ctx) {
       else if (key.name === "a") scans.forEach(s => (s.selected = true))
       else if (key.name === "n") scans.forEach(s => (s.selected = false))
       else if (key.name === "h") ctx.hooks = !ctx.hooks
-      else if (key.name === "return") { plan = buildPlan(ctx, scans); screen = "plan" }
+      else if (key.name === "return") {
+        if (!scans.some(s => s.selected)) { footer.content = " select at least one agent (space / a) — GREENLOOP won't inject into nothing · q quit" }
+        else { plan = buildPlan(ctx, scans); screen = "plan" }
+      }
     } else if (screen === "plan") {
       if (key.name === "b") screen = "select"
       else if (key.name === "return") {
@@ -2430,7 +2452,7 @@ function check(ctx: Ctx): number {
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
 
-interface Flags { headless: boolean; list: boolean; yes: boolean; agents: string[] | null }
+interface Flags { headless: boolean; list: boolean; yes: boolean; agents: string[] | null; all: boolean }
 
 function main() {
   const argv = process.argv.slice(2)
@@ -2470,9 +2492,11 @@ function main() {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),
     yes: has("--yes"),
-    agents: val("--agents=")?.split(",").map(s => s.trim()) ?? null,
+    agents: val("--agents=")?.split(",").map(s => s.trim()).filter(Boolean) ?? null,
+    all: has("--all"),
   }
-  if (flags.headless) headless(ctx, flags)
+  // Explicit selection flags imply a non-interactive run.
+  if (flags.headless || flags.agents || flags.all) headless(ctx, flags)
   else tui(ctx).catch(err => {
     console.error("TUI unavailable (" + (err?.message ?? err) + ") — falling back to headless.\n")
     headless(ctx, flags)
