@@ -215,6 +215,7 @@ don't shrink:
 \`\`\`
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
+goal_confirmed  true only after the USER ratifies goal + DONE WHEN — gates execution (set via \`greenloop confirm\`)
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -573,9 +574,19 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-> **State write:** \`user_request\` verbatim, goal, DoD (all items \`pending\`),
-> constraints, assumptions entered into the market (R1) with confidence, falsifier,
-> and impact-if-false, scope fence.
+**2d. Confirm the spec with the user (human-confirmed goal).** Before any execution,
+present the reconstructed goal and the DoD/DONE WHEN back to the user in plain language
+and get explicit confirmation. Only then is the spec human-ratified: the user runs
+\`greenloop confirm\` (or you set \`goal_confirmed: true\` strictly on their say-so).
+**Never set \`goal_confirmed\` yourself without the user's explicit confirmation** — a
+model-written goal is not a confirmed goal. The pre-edit gate stays closed until state
+shows a human-confirmed goal AND a non-empty \`done_when\`: no project edit proceeds from
+an unconfirmed or model-only spec. (Editing \`.greenloop/\` to record the spec is always
+allowed, so you can reach this point.)
+
+> **State write:** \`user_request\` verbatim, goal, \`goal_confirmed\` (false until the user
+> ratifies), DoD (all items \`pending\`), constraints, assumptions entered into the market
+> (R1) with confidence, falsifier, and impact-if-false, scope fence.
 
 ---
 
@@ -969,6 +980,7 @@ const GREENLOOP_SCHEMA = `{
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
+  "goal_confirmed": false,
   "scope_fence": "",
   "constraints": [],
 
@@ -1301,11 +1313,11 @@ Non-negotiables that apply even before you read it:
 const HOOK_PRETOOL = `#!/bin/sh
 # GREENLOOP pre-edit gate — harness-agnostic (Claude Code PreToolUse, Codex
 # PreToolUse, Gemini CLI BeforeTool). Blocks edits to PROJECT files until
-# workflow state exists AND a falsifiable DONE WHEN is locked in (Section C:
-# no execution from ORBITING). Writes into .greenloop/ are always allowed —
-# recording state is how the agent reaches LOCK_IN. On design tasks the
-# Reference Fidelity Lock must precede component code (DESIGN profile P0).
-# Block protocol shared by all three: exit 2 + reason on stderr.
+# workflow state exists, the goal is HUMAN-confirmed, AND a falsifiable DONE
+# WHEN is locked in (Section C: no execution from ORBITING). Writes into
+# .greenloop/ are always allowed — recording state is how the agent reaches
+# LOCK_IN. On design tasks the Reference Fidelity Lock must precede component
+# code (DESIGN profile P0). Block protocol shared by all three: exit 2 + stderr.
 INPUT=$(cat)
 ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
 if [ -z "$ROOT" ]; then
@@ -1333,6 +1345,13 @@ fi
 # No execution from ORBITING: require a non-empty convergence.done_when.
 if ! grep -Eq '"done_when"[[:space:]]*:[[:space:]]*"[^"]+"' "$STATE"; then
   echo "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files." >&2
+  exit 2
+fi
+
+# Human-confirmed goal: the spec (goal + DONE WHEN) must be ratified by the user,
+# not just written by the agent. Set goal_confirmed via 'greenloop confirm'.
+if ! grep -Eq '"goal_confirmed"[[:space:]]*:[[:space:]]*true' "$STATE"; then
+  echo "GREENLOOP: goal is not human-confirmed — present the reconstructed goal and the DONE WHEN to the user, get explicit confirmation, then run 'greenloop confirm' (sets goal_confirmed=true). No project edit may proceed from an unconfirmed or model-only spec." >&2
   exit 2
 fi
 
@@ -1426,6 +1445,12 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
         throw new Error(
           "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). " +
           "Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files.",
+        )
+      }
+      if (state.goal_confirmed !== true) {
+        throw new Error(
+          "GREENLOOP: goal is not human-confirmed — present the reconstructed goal and the DONE WHEN to the user, " +
+          "get explicit confirmation, then run 'greenloop confirm'. No project edit may proceed from an unconfirmed or model-only spec.",
         )
       }
       const designDir = join(gl, "design")
@@ -2209,6 +2234,39 @@ function verify(ctx: Ctx, quiet: boolean): number {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+ * CONFIRM — `greenloop confirm` records the human's ratification of the spec.
+ * The pre-edit gate stays closed until state.goal_confirmed === true; this is
+ * the human's deliberate action. It refuses to set the flag unless a goal AND
+ * a DONE WHEN already exist, and echoes both so the human ratifies real values,
+ * not a blank or a model guess. Exit 0 = confirmed · 1 = incomplete spec · 3 =
+ * no/invalid state.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+function confirm(ctx: Ctx): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP confirm: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP confirm: .greenloop/state.json is not valid JSON."); return 3 }
+  const goal = typeof state.goal === "string" ? state.goal.trim() : ""
+  const dw = typeof state?.convergence?.done_when === "string" ? state.convergence.done_when.trim() : ""
+  if (!goal || !dw) {
+    console.error("GREENLOOP confirm: cannot confirm an incomplete spec.")
+    if (!goal) console.error("  • state.goal is empty — write the goal first (Phase 2).")
+    if (!dw) console.error("  • convergence.done_when is empty — write a falsifiable DONE WHEN first (Section C).")
+    return 1
+  }
+  console.log("Confirm this spec as human-ratified:")
+  console.log("  goal:      " + goal)
+  console.log("  done_when: " + dw)
+  state.goal_confirmed = true
+  state.goal_confirmed_at = new Date().toISOString()
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
+  console.log("GREENLOOP: goal_confirmed = true — the pre-edit gate will now allow project edits.")
+  return 0
+}
+
+/* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
 
@@ -2224,8 +2282,9 @@ function main() {
     dryRun: has("--dry-run"),
     hooks: !has("--no-hooks"),
   }
-  // Subcommand: `greenloop verify` — state-aware GREEN check (see VERIFY).
+  // Subcommands: `greenloop verify` (GREEN check) · `greenloop confirm` (ratify spec).
   if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
+  if (argv[0] === "confirm") process.exit(confirm(ctx))
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),

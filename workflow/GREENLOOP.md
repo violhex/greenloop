@@ -130,6 +130,7 @@ don't shrink:
 ```
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
+goal_confirmed  true only after the USER ratifies goal + DONE WHEN — gates execution (set via `greenloop confirm`)
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -488,9 +489,19 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-> **State write:** `user_request` verbatim, goal, DoD (all items `pending`),
-> constraints, assumptions entered into the market (R1) with confidence, falsifier,
-> and impact-if-false, scope fence.
+**2d. Confirm the spec with the user (human-confirmed goal).** Before any execution,
+present the reconstructed goal and the DoD/DONE WHEN back to the user in plain language
+and get explicit confirmation. Only then is the spec human-ratified: the user runs
+`greenloop confirm` (or you set `goal_confirmed: true` strictly on their say-so).
+**Never set `goal_confirmed` yourself without the user's explicit confirmation** — a
+model-written goal is not a confirmed goal. The pre-edit gate stays closed until state
+shows a human-confirmed goal AND a non-empty `done_when`: no project edit proceeds from
+an unconfirmed or model-only spec. (Editing `.greenloop/` to record the spec is always
+allowed, so you can reach this point.)
+
+> **State write:** `user_request` verbatim, goal, `goal_confirmed` (false until the user
+> ratifies), DoD (all items `pending`), constraints, assumptions entered into the market
+> (R1) with confidence, falsifier, and impact-if-false, scope fence.
 
 ---
 

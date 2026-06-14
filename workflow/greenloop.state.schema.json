@@ -3,6 +3,7 @@
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
+  "goal_confirmed": false,
   "scope_fence": "",
   "constraints": [],
 
