@@ -143,7 +143,11 @@ describe("HOOK_PRETOOL", () => {
   }
 
   function writeState(content: object | string) {
-    const json = typeof content === "string" ? content : JSON.stringify(content, null, 2)
+    // Default goal_confirmed:true so these done_when/design tests isolate their
+    // concern; the goal-confirmation gate has its own describe block below.
+    const obj = (content && typeof content === "object" && !("goal_confirmed" in content))
+      ? { goal_confirmed: true, ...content } : content
+    const json = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2)
     writeFileSync(statePath, json)
   }
 
@@ -264,6 +268,45 @@ describe("HOOK_PRETOOL", () => {
     // State file doesn't exist — should block regardless of input
     const r = run(join(tmpDir, "src", "index.ts"))
     assert.equal(r.code, 2)
+  })
+})
+
+// ════════════════════════════════════════════════════════════════════════
+// 2b. HOOK_PRETOOL — human/authority-confirmed goal gate
+// ════════════════════════════════════════════════════════════════════════
+
+describe("HOOK_PRETOOL goal_confirmed gate", () => {
+  let tmpDir: string
+  let scriptPath: string
+  let statePath: string
+
+  before(() => {
+    const raw = extractConst(SOURCE, "HOOK_PRETOOL")
+    const script = raw.replace(/\\([$\\])/g, "$1")
+    tmpDir = makeTempDir()
+    scriptPath = join(tmpDir, "pre-tool.sh")
+    mkdirSync(join(tmpDir, ".greenloop"), { recursive: true })
+    statePath = join(tmpDir, ".greenloop", "state.json")
+    writeFileSync(scriptPath, script, { mode: 0o755 })
+  })
+  after(() => removeTempDir(tmpDir))
+
+  function run() {
+    const input = JSON.stringify({ tool: "write", file_path: join(tmpDir, "src", "x.ts") })
+    return runShellScript(scriptPath, input, { CLAUDE_PROJECT_DIR: tmpDir })
+  }
+
+  test("blocks edit when goal_confirmed is false even with done_when set", () => {
+    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "tests pass" }, goal_confirmed: false }))
+    const r = run()
+    assert.equal(r.code, 2)
+    assert.match(r.stderr, /not ratified|goal_confirmed|confirm/)
+  })
+
+  test("allows edit when goal_confirmed is true and done_when is set", () => {
+    writeFileSync(statePath, JSON.stringify({ convergence: { done_when: "tests pass" }, goal_confirmed: true }))
+    const r = run()
+    assert.equal(r.code, 0)
   })
 })
 
@@ -650,8 +693,8 @@ describe("opencode TARGETS entry", () => {
 // ════════════════════════════════════════════════════════════════════════
 
 describe("TUI hooks status line", () => {
-  test("hooks status line mentions both Claude Code and OpenCode", () => {
-    assert.match(SOURCE, /Claude Code PreToolUse\+Stop.*OpenCode pre-edit|OpenCode pre-edit.*Claude Code PreToolUse\+Stop/)
+  test("hooks status line names the pre-edit gate harnesses", () => {
+    assert.match(SOURCE, /pre-edit gates \(Claude\/OpenCode\/Codex\/Gemini\)/)
   })
 
   test("hooks status line mentions enforcement gates", () => {
@@ -660,7 +703,7 @@ describe("TUI hooks status line", () => {
 
   test("hooks status line is in tui render function", () => {
     // Verify the updated string is present
-    assert.match(SOURCE, /enforcement gates \(Claude Code PreToolUse\+Stop · OpenCode pre-edit\)/)
+    assert.match(SOURCE, /pre-edit gates \(Claude\/OpenCode\/Codex\/Gemini\) \+ Claude Stop/)
   })
 })
 
@@ -677,9 +720,11 @@ describe("HOOK_PRETOOL source content", () => {
     assert.match(SOURCE, /file_path/)
   })
 
-  test("includes .greenloop bypass via case statement", () => {
-    assert.match(SOURCE, /\.greenloop/)
-    assert.match(SOURCE, /case "\$FILE"/)
+  test("exempts .greenloop/ edits via target-path extraction", () => {
+    // Exemption is now harness-agnostic: collect target paths (file_path +
+    // apply_patch markers) and allow when all are under .greenloop/.
+    assert.match(SOURCE, /TARGETS=/)
+    assert.match(SOURCE, /greenloop\//)
   })
 
   test("checks for done_when with grep -Eq regex", () => {

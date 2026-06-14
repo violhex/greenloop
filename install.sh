@@ -146,6 +146,7 @@ inject_repo() {
     { [ -f AGENTS.md ] && printf '\n'; printf '%s\n' "$MARK_BEGIN"; cat "$TMP/pointer.md"; printf '%s\n' "$MARK_END"; } >> AGENTS.md
     ok "AGENTS.md binding"
   fi
+  note "universal AGENTS.md binding only — to bind specific editors (Cursor rules, Claude Code hooks, …) run: greenloop --agents=<ids>  (or --all)"
 }
 
 write_pointer() {
@@ -205,7 +206,7 @@ esac
 say ""
 say "Done."
 case "$MODE" in
-  cli) say "Next: cd into a repo and run \`greenloop\` — it detects your agents and binds the workflow to each." ;;
-  repo) say "For per-agent bindings (Cursor rules, Claude Code hooks, …): re-run with --all or just run \`greenloop\`." ;;
+  cli) say "Next: cd into a repo and choose what to bind — \`greenloop --agents=<ids>\` (e.g. --agents=cursor,claude-code) or \`greenloop --all\` for every detected agent. GREENLOOP injects nothing until you choose; run \`greenloop --list\` to see ids." ;;
+  repo) say "Bound the universal AGENTS.md convention only. For editor-specific bindings: \`greenloop --agents=<ids>\` (or \`--all\`). GREENLOOP does not inject into every editor automatically." ;;
 esac
 exit 0

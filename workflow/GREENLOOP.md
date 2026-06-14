@@ -130,6 +130,9 @@ don't shrink:
 ```
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
+goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
+goal_confirmed_by  provenance of ratification: `human` or `delegated:<id>` (set via `greenloop confirm [--delegated <id>]`)
+hazards_allowed  authorized irreversible-action classes (gate B: force-push, destructive-fs, sql-destructive, deploy-publish, privileged); set via `greenloop allow <class>`
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -488,9 +491,28 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-> **State write:** `user_request` verbatim, goal, DoD (all items `pending`),
-> constraints, assumptions entered into the market (R1) with confidence, falsifier,
-> and impact-if-false, scope fence.
+**2d. Ratify the spec before executing (authority-confirmed goal).** The goal +
+DoD/DONE WHEN must be ratified by an authority before any execution; the pre-edit gate
+stays closed until state shows `goal_confirmed: true` AND a non-empty `done_when`.
+Ratification records *provenance* (who/what ratified), not a proof of human presence —
+two paths, agent-first:
+
+- **Autonomous / agent-led run** (the common case as loops become agent-primary): the
+  launching authority pre-authorizes once with `greenloop confirm --delegated <id>`
+  (recorded as `delegated:<id>` — a launch token, policy reference, or orchestrator id).
+  The loop then runs without a human in the middle; the human reviews at the commit
+  boundary, not per edit.
+- **Interactive run:** present the reconstructed goal and DONE WHEN to the user, get
+  explicit confirmation, then run `greenloop confirm` (recorded as `human`).
+
+Do not silently self-assert the goal: interactively, never set `goal_confirmed` without
+the user's confirmation; in a delegated run, ratify only under a real delegation the
+authority granted at launch — the provenance is auditable at review. (Editing
+`.greenloop/` to record the spec is always allowed, so you can reach this point.)
+
+> **State write:** `user_request` verbatim, goal, `goal_confirmed` (false until the user
+> ratifies), DoD (all items `pending`), constraints, assumptions entered into the market
+> (R1) with confidence, falsifier, and impact-if-false, scope fence.
 
 ---
 
@@ -690,7 +712,10 @@ happen.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
-duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9.
+duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9. At this
+cadence also run `greenloop check` — a model-independent slip tripwire (reopened
+GREENs, fix-attempt thrash, unresolved failures) that, when it trips, names the one
+intervention to do instead of letting the loop spin.
 
 **Budget awareness:** tick budgets in state as you go; the 75% compressed-mode trigger
 from 1e applies here most of all.

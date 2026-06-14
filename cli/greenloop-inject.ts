@@ -20,7 +20,9 @@
  *   --list            detect + print, change nothing
  *   --dry-run         plan + print every file op, write nothing
  *   --yes             apply without confirmation (headless)
- *   --agents=a,b,c    restrict to specific target ids (see --list for ids)
+ *   --agents=a,b,c    bind ONLY these target ids (see --list). Selection is required:
+ *   --all             bind every DETECTED agent (●). Without --agents or --all,
+ *                     GREENLOOP injects nothing — you must choose explicitly.
  *   --hooks / --no-hooks   enable/disable agent enforcement gates — Claude Code
  *                          (PreToolUse+Stop), OpenCode, Codex, Gemini (default: on)
  *   --dir=PATH        target project root (default: cwd)
@@ -215,6 +217,9 @@ don't shrink:
 \`\`\`
 user_request    the original ask, VERBATIM — the goal-corruption reference point (R7)
 goal, scope_fence, constraints
+goal_confirmed  true only after an AUTHORITY ratifies goal + DONE WHEN — gates execution
+goal_confirmed_by  provenance of ratification: \`human\` or \`delegated:<id>\` (set via \`greenloop confirm [--delegated <id>]\`)
+hazards_allowed  authorized irreversible-action classes (gate B: force-push, destructive-fs, sql-destructive, deploy-publish, privileged); set via \`greenloop allow <class>\`
 dod[]           {id, check, status: pending|pass|fail, evidence}
 assumptions[]   {assumption, confidence 0–1, evidence[], falsifier,
                  impact_if_false: low|medium|destroys_plan,
@@ -573,9 +578,28 @@ D5-style regression protection is mandatory whenever an existing codebase is tou
 **2c. Scope fence.** Write one line: what you will NOT do. Prevents scope creep during
 the loop.
 
-> **State write:** \`user_request\` verbatim, goal, DoD (all items \`pending\`),
-> constraints, assumptions entered into the market (R1) with confidence, falsifier,
-> and impact-if-false, scope fence.
+**2d. Ratify the spec before executing (authority-confirmed goal).** The goal +
+DoD/DONE WHEN must be ratified by an authority before any execution; the pre-edit gate
+stays closed until state shows \`goal_confirmed: true\` AND a non-empty \`done_when\`.
+Ratification records *provenance* (who/what ratified), not a proof of human presence —
+two paths, agent-first:
+
+- **Autonomous / agent-led run** (the common case as loops become agent-primary): the
+  launching authority pre-authorizes once with \`greenloop confirm --delegated <id>\`
+  (recorded as \`delegated:<id>\` — a launch token, policy reference, or orchestrator id).
+  The loop then runs without a human in the middle; the human reviews at the commit
+  boundary, not per edit.
+- **Interactive run:** present the reconstructed goal and DONE WHEN to the user, get
+  explicit confirmation, then run \`greenloop confirm\` (recorded as \`human\`).
+
+Do not silently self-assert the goal: interactively, never set \`goal_confirmed\` without
+the user's confirmation; in a delegated run, ratify only under a real delegation the
+authority granted at launch — the provenance is auditable at review. (Editing
+\`.greenloop/\` to record the spec is always allowed, so you can reach this point.)
+
+> **State write:** \`user_request\` verbatim, goal, \`goal_confirmed\` (false until the user
+> ratifies), DoD (all items \`pending\`), constraints, assumptions entered into the market
+> (R1) with confidence, falsifier, and impact-if-false, scope fence.
 
 ---
 
@@ -775,7 +799,10 @@ happen.
 
 **Mid-loop review cadence:** after every ~3 steps (or any step that touched >5 files),
 run a micro-review — Architect pass over the diff: dead code, drift from plan,
-duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9.
+duplicated logic, TODOs you left behind. Cheap now, expensive in Phase 9. At this
+cadence also run \`greenloop check\` — a model-independent slip tripwire (reopened
+GREENs, fix-attempt thrash, unresolved failures) that, when it trips, names the one
+intervention to do instead of letting the loop spin.
 
 **Budget awareness:** tick budgets in state as you go; the 75% compressed-mode trigger
 from 1e applies here most of all.
@@ -969,7 +996,10 @@ const GREENLOOP_SCHEMA = `{
 
   "user_request": "<the original ask, verbatim — the goal-corruption reference point (R7)>",
   "goal": "",
+  "goal_confirmed": false,
+  "goal_confirmed_by": "",
   "scope_fence": "",
+  "hazards_allowed": [],
   "constraints": [],
 
   "dod": [
@@ -1301,11 +1331,11 @@ Non-negotiables that apply even before you read it:
 const HOOK_PRETOOL = `#!/bin/sh
 # GREENLOOP pre-edit gate — harness-agnostic (Claude Code PreToolUse, Codex
 # PreToolUse, Gemini CLI BeforeTool). Blocks edits to PROJECT files until
-# workflow state exists AND a falsifiable DONE WHEN is locked in (Section C:
-# no execution from ORBITING). Writes into .greenloop/ are always allowed —
-# recording state is how the agent reaches LOCK_IN. On design tasks the
-# Reference Fidelity Lock must precede component code (DESIGN profile P0).
-# Block protocol shared by all three: exit 2 + reason on stderr.
+# workflow state exists, the goal is HUMAN-confirmed, AND a falsifiable DONE
+# WHEN is locked in (Section C: no execution from ORBITING). Writes into
+# .greenloop/ are always allowed — recording state is how the agent reaches
+# LOCK_IN. On design tasks the Reference Fidelity Lock must precede component
+# code (DESIGN profile P0). Block protocol shared by all three: exit 2 + stderr.
 INPUT=$(cat)
 ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
 if [ -z "$ROOT" ]; then
@@ -1333,6 +1363,13 @@ fi
 # No execution from ORBITING: require a non-empty convergence.done_when.
 if ! grep -Eq '"done_when"[[:space:]]*:[[:space:]]*"[^"]+"' "$STATE"; then
   echo "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files." >&2
+  exit 2
+fi
+
+# Human-confirmed goal: the spec (goal + DONE WHEN) must be ratified by the user,
+# not just written by the agent. Set goal_confirmed via 'greenloop confirm'.
+if ! grep -Eq '"goal_confirmed"[[:space:]]*:[[:space:]]*true' "$STATE"; then
+  echo "GREENLOOP: goal is not ratified — the spec (goal + DONE WHEN) must be confirmed by an authority before edits. Interactive run: present them to the user and run 'greenloop confirm'. Autonomous/agent-led run pre-authorized at launch: 'greenloop confirm --delegated <id>'. No project edit may proceed from an unratified or silently self-asserted spec." >&2
   exit 2
 fi
 
@@ -1373,6 +1410,43 @@ fi
 exit 0   # no harness and no state/CLI — allow stop
 `
 
+/* ── Hazard gate (B): the irreversibility checkpoint ────────────────────────
+ * Harness-agnostic gate for the SHELL/bash tool. Reversible sandbox edits flow
+ * through the edit gate; irreversible/hazardous actions (force-push, destructive
+ * fs, destructive SQL, deploy/publish, privileged) are blocked unless the
+ * authority pre-authorized that class via `greenloop allow <class>` — even in a
+ * delegated autonomous run. This is where the human/authority "earns the check"
+ * at the irreversibility boundary, not per edit. Block: exit 2 + stderr. */
+const HOOK_HAZARD = `#!/bin/sh
+# GREENLOOP hazard gate — blocks irreversible/hazardous SHELL actions unless the
+# authority pre-authorized that hazard class ('greenloop allow <class>').
+INPUT=$(cat)
+ROOT="\${CLAUDE_PROJECT_DIR:-\${GEMINI_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  ROOT=$(printf '%s' "$INPUT" | grep -oE '"cwd"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\\1/')
+  [ -z "$ROOT" ] && ROOT="."
+fi
+STATE="$ROOT/.greenloop/state.json"
+
+CLASS=""
+if   printf '%s' "$INPUT" | grep -Eq 'git[^"]*push[^"]*(--force|--force-with-lease| -f)'; then CLASS="force-push"
+elif printf '%s' "$INPUT" | grep -Eq 'rm[[:space:]]+-[A-Za-z]*[rf]'; then CLASS="destructive-fs"
+elif printf '%s' "$INPUT" | grep -Eiq '(DROP|TRUNCATE)[[:space:]]+(TABLE|DATABASE|SCHEMA)|DELETE[[:space:]]+FROM'; then CLASS="sql-destructive"
+elif printf '%s' "$INPUT" | grep -Eq '(npm|pnpm|yarn)[[:space:]]+publish|docker[^"]*push|terraform[[:space:]]+apply|kubectl[[:space:]]+(apply|delete)|wrangler[[:space:]]+deploy|vercel[^"]*--prod'; then CLASS="deploy-publish"
+elif printf '%s' "$INPUT" | grep -Eq '(^|[^A-Za-z])sudo[[:space:]]|chmod[[:space:]]+-R|chown[[:space:]]+-R'; then CLASS="privileged"
+fi
+[ -z "$CLASS" ] && exit 0
+
+if [ -f "$STATE" ]; then
+  ARR=$(tr -d '\\n' < "$STATE" | grep -oE '"hazards_allowed"[[:space:]]*:[[:space:]]*\\[[^]]*\\]' | grep -oE '\\[[^]]*\\]')
+  ALLOWED=$(printf '%s' "$ARR" | grep -oE '"[^"]+"' | tr -d '"')
+  if printf '%s\\n' "$ALLOWED" | grep -qxF "$CLASS"; then exit 0; fi
+  if printf '%s\\n' "$ALLOWED" | grep -qxF '*'; then exit 0; fi
+fi
+echo "GREENLOOP: blocked a '$CLASS' action — irreversible/hazardous operations require authorization even after goal ratification. Authorize it: 'greenloop allow $CLASS' (interactive) or 'greenloop allow $CLASS --delegated <id>' (autonomous run). Reversible work needs no authorization." >&2
+exit 2
+`
+
 /* ── OpenCode enforcement plugin ────────────────────────────────────────────
  * OpenCode auto-loads TS plugins from .opencode/plugins/. This is OpenCode's
  * analog of the Claude Code PreToolUse hook: a `tool.execute.before` handler
@@ -1400,7 +1474,28 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
   const root = directory || worktree || process.cwd()
   return {
     "tool.execute.before": async (input: any, output: any) => {
-      if (!input || !EDIT_TOOLS.has(input.tool)) return
+      if (!input) return
+      // Hazard gate (B): irreversible/hazardous shell actions need authorization.
+      if (input.tool === "bash") {
+        const cmd = String((output && output.args && (output.args.command || output.args.cmd)) || "").toLowerCase()
+        const HZ: Array<[string, (c: string) => boolean]> = [
+          ["force-push", c => c.includes("push") && (c.includes("--force") || c.includes(" -f"))],
+          ["destructive-fs", c => c.includes("rm -rf") || c.includes("rm -fr") || c.includes("rm -r ")],
+          ["sql-destructive", c => c.includes("drop table") || c.includes("drop database") || c.includes("truncate") || c.includes("delete from")],
+          ["deploy-publish", c => c.includes("npm publish") || c.includes("pnpm publish") || c.includes("yarn publish") || c.includes("docker push") || c.includes("terraform apply") || c.includes("kubectl apply") || c.includes("kubectl delete") || c.includes("wrangler deploy") || c.includes("--prod")],
+          ["privileged", c => c.includes("sudo ") || c.includes("chmod -r") || c.includes("chown -r")],
+        ]
+        for (const pair of HZ) {
+          if (pair[1](cmd)) {
+            let allowed: any[] = []
+            try { const st = JSON.parse(readFileSync(join(root, ".greenloop", "state.json"), "utf8")); allowed = Array.isArray(st.hazards_allowed) ? st.hazards_allowed : [] } catch (e) {}
+            if (allowed.indexOf(pair[0]) >= 0 || allowed.indexOf("*") >= 0) return
+            throw new Error("GREENLOOP: blocked a '" + pair[0] + "' action — irreversible/hazardous operations require authorization even after goal ratification. Authorize it: 'greenloop allow " + pair[0] + "' or 'greenloop allow " + pair[0] + " --delegated <id>' (autonomous run).")
+          }
+        }
+        return
+      }
+      if (!EDIT_TOOLS.has(input.tool)) return
       const args = (output && output.args) || {}
       const target = String(args.filePath || args.path || args.file || "")
       // Edits to the state layer itself are never blocked.
@@ -1426,6 +1521,13 @@ export const GreenloopGate = async ({ directory, worktree }: any) => {
         throw new Error(
           "GREENLOOP: convergence.done_when is empty — no edit may be made from ORBITING (Section C). " +
           "Reach LOCK_IN first: write a falsifiable DONE WHEN into .greenloop/state.json before editing project files.",
+        )
+      }
+      if (state.goal_confirmed !== true) {
+        throw new Error(
+          "GREENLOOP: goal is not ratified — the spec (goal + DONE WHEN) must be confirmed by an authority before edits. " +
+          "Interactive: run 'greenloop confirm'. Autonomous/agent-led run pre-authorized at launch: 'greenloop confirm --delegated <id>'. " +
+          "No project edit may proceed from an unratified or silently self-asserted spec.",
         )
       }
       const designDir = join(gl, "design")
@@ -1695,7 +1797,6 @@ const TARGETS: AgentTarget[] = [
     hint: "Codex CLI, OpenCode, Jules, Zed, Amp & any AGENTS.md-aware agent",
     detect: () => ({ present: true, evidence: ["always applicable — the common convention"] }),
     plan: ctx => [
-      ...corePackageOps(ctx),
       markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd()),
     ],
   },
@@ -1714,6 +1815,7 @@ const TARGETS: AgentTarget[] = [
       if (ctx.hooks) {
         ops.push(
           execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+          execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
           execFile(join(ctx.root, ".greenloop", "hooks", "stop-verify.sh"), HOOK_STOP),
           claudeSettingsOp(ctx),
           ownedFile(join(ctx.root, ".claude", "agents", "greenloop-judge.md"), CLAUDE_JUDGE_AGENT, s => s.includes("GREENLOOP")),
@@ -1812,6 +1914,7 @@ const TARGETS: AgentTarget[] = [
       const ops = [markerBlock(join(ctx.root, "GEMINI.md"), "gemini", pointerMd())]
       if (ctx.hooks) ops.push(
         execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
         geminiSettingsOp(ctx),
       )
       return ops
@@ -1829,6 +1932,7 @@ const TARGETS: AgentTarget[] = [
       const ops = [markerBlock(join(ctx.root, "AGENTS.md"), "agents", pointerMd())]
       if (ctx.hooks) ops.push(
         execFile(join(ctx.root, ".greenloop", "hooks", "pretool-gate.sh"), HOOK_PRETOOL),
+        execFile(join(ctx.root, ".greenloop", "hooks", "hazard-gate.sh"), HOOK_HAZARD),
         codexHooksOp(ctx),
       )
       return ops
@@ -1910,6 +2014,7 @@ const TARGETS: AgentTarget[] = [
 function claudeSettingsOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".claude", "settings.json")
   const pretool = { matcher: "Edit|Write|MultiEdit|NotebookEdit", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "Bash", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/hazard-gate.sh` }] }
   const stop = { matcher: "", hooks: [{ type: "command", command: `"$CLAUDE_PROJECT_DIR"/.greenloop/hooks/stop-verify.sh` }] }
   const build = (settings: any) => {
     settings.hooks ??= {}
@@ -1917,6 +2022,7 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
     settings.hooks.Stop ??= []
     const hasOurs = (arr: any[], frag: string) => arr.some(e => JSON.stringify(e).includes(frag))
     if (!hasOurs(settings.hooks.PreToolUse, "pretool-gate.sh")) settings.hooks.PreToolUse.push(pretool)
+    if (!hasOurs(settings.hooks.PreToolUse, "hazard-gate.sh")) settings.hooks.PreToolUse.push(hazard)
     if (!hasOurs(settings.hooks.Stop, "stop-verify.sh")) settings.hooks.Stop.push(stop)
     return JSON.stringify(settings, null, 2) + "\n"
   }
@@ -1938,10 +2044,12 @@ function claudeSettingsOp(ctx: Ctx): FileOp {
 function codexHooksOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".codex", "hooks.json")
   const entry = { matcher: "Edit|Write", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "Bash", hooks: [{ type: "command", command: `"$(git rev-parse --show-toplevel)"/.greenloop/hooks/hazard-gate.sh` }] }
   const build = (cfg: any) => {
     cfg.hooks ??= {}
     cfg.hooks.PreToolUse ??= []
     if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.PreToolUse.push(entry)
+    if (!cfg.hooks.PreToolUse.some((e: any) => JSON.stringify(e).includes("hazard-gate.sh"))) cfg.hooks.PreToolUse.push(hazard)
     return JSON.stringify(cfg, null, 2) + "\n"
   }
   if (!existsSync(path))
@@ -1959,10 +2067,12 @@ function codexHooksOp(ctx: Ctx): FileOp {
 function geminiSettingsOp(ctx: Ctx): FileOp {
   const path = join(ctx.root, ".gemini", "settings.json")
   const entry = { matcher: "write_file|replace|edit", hooks: [{ name: "greenloop-gate", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/pretool-gate.sh` }] }
+  const hazard = { matcher: "run_shell_command", hooks: [{ name: "greenloop-hazard", type: "command", command: `"$GEMINI_PROJECT_DIR"/.greenloop/hooks/hazard-gate.sh` }] }
   const build = (cfg: any) => {
     cfg.hooks ??= {}
     cfg.hooks.BeforeTool ??= []
     if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("pretool-gate.sh"))) cfg.hooks.BeforeTool.push(entry)
+    if (!cfg.hooks.BeforeTool.some((e: any) => JSON.stringify(e).includes("hazard-gate.sh"))) cfg.hooks.BeforeTool.push(hazard)
     return JSON.stringify(cfg, null, 2) + "\n"
   }
   if (!existsSync(path))
@@ -2002,14 +2112,21 @@ interface Scan { target: AgentTarget; detection: Detection; selected: boolean }
 function scanAll(ctx: Ctx): Scan[] {
   return TARGETS.map(target => {
     const detection = target.detect(ctx)
-    return { target, detection, selected: detection.present }
+    // Nothing is selected by default: the user must choose which agents to bind
+    // (--agents=<ids>, --all, or TUI). Detection only informs the choice.
+    return { target, detection, selected: false }
   })
 }
 
 /** Dedupe by path: the same op planned by several targets (AGENTS.md from
- *  universal/codex/opencode) is executed exactly once. */
+ *  universal/codex/opencode) is executed exactly once. The core workflow files
+ *  (corePackageOps) are the payload — laid down whenever ANY target is selected,
+ *  independent of which agent(s) the user chose, so a single-agent selection
+ *  still gets GREENLOOP.md and the state dir. */
 function buildPlan(ctx: Ctx, scans: Scan[]): FileOp[] {
   const byPath = new Map<string, FileOp>()
+  if (scans.some(s => s.selected))
+    for (const op of corePackageOps(ctx)) if (!byPath.has(op.path)) byPath.set(op.path, op)
   for (const s of scans) if (s.selected)
     for (const op of s.target.plan(ctx)) if (!byPath.has(op.path)) byPath.set(op.path, op)
   return [...byPath.values()]
@@ -2035,7 +2152,9 @@ const rel = (ctx: Ctx, p: string) => p.startsWith(ctx.root) ? p.slice(ctx.root.l
 function headless(ctx: Ctx, flags: Flags) {
   const scans = scanAll(ctx).map(s => ({
     ...s,
-    selected: flags.agents ? flags.agents.includes(s.target.id) : s.selected,
+    // Explicit selection only: --agents=<ids> picks specific agents; --all binds
+    // every detected agent. Without either, nothing is selected.
+    selected: flags.agents ? flags.agents.includes(s.target.id) : (flags.all && s.detection.present),
   }))
   console.log(`GREENLOOP injector v${VERSION} — ${ctx.root}\n`)
   for (const s of scans) {
@@ -2045,6 +2164,16 @@ function headless(ctx: Ctx, flags: Flags) {
     if (s.detection.evidence.length) console.log(`              └ ${s.detection.evidence.join("; ")}`)
   }
   if (flags.list) return
+  // Enforce explicit selection — never inject into everything implicitly.
+  if (!scans.some(s => s.selected)) {
+    console.log(`\nNo agents selected — GREENLOOP will not inject into anything on its own.`)
+    console.log(`Choose explicitly:`)
+    console.log(`  --agents=<ids>   bind specific agents (e.g. --agents=cursor,claude-code; ids above)`)
+    console.log(`  --all            bind every detected agent (●) in this environment`)
+    if (flags.agents) console.log(`(--agents matched no known target id; run --list to see valid ids)`)
+    process.exitCode = 2
+    return
+  }
   const plan = buildPlan(ctx, scans)
   console.log(`\nPlan (${plan.length} file ops${ctx.dryRun ? ", DRY RUN" : ""}):`)
   for (const op of plan) console.log(`  ${ICON[op.action]} ${rel(ctx, op.path).padEnd(44)} ${op.detail}`)
@@ -2093,7 +2222,7 @@ async function tui(ctx: Ctx) {
   function render() {
     clearRows()
     if (screen === "select") {
-      put(0, "Select agents to bind GREENLOOP to (detected agents pre-selected):")
+      put(0, "Select agents to bind GREENLOOP to (● = detected; nothing selected by default — space to choose):")
       scans.forEach((s, i) => {
         const ptr = i === cursor ? "❯" : " "
         const box = s.selected ? "[x]" : "[ ]"
@@ -2128,7 +2257,10 @@ async function tui(ctx: Ctx) {
       else if (key.name === "a") scans.forEach(s => (s.selected = true))
       else if (key.name === "n") scans.forEach(s => (s.selected = false))
       else if (key.name === "h") ctx.hooks = !ctx.hooks
-      else if (key.name === "return") { plan = buildPlan(ctx, scans); screen = "plan" }
+      else if (key.name === "return") {
+        if (!scans.some(s => s.selected)) { footer.content = " select at least one agent (space / a) — GREENLOOP won't inject into nothing · q quit" }
+        else { plan = buildPlan(ctx, scans); screen = "plan" }
+      }
     } else if (screen === "plan") {
       if (key.name === "b") screen = "select"
       else if (key.name === "return") {
@@ -2209,10 +2341,119 @@ function verify(ctx: Ctx, quiet: boolean): number {
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+ * CONFIRM — `greenloop confirm` ratifies the spec so the pre-edit gate opens.
+ * Ratification is an AUTHORITY act, recorded with provenance — not a proof of
+ * human presence (which is unverifiable). Two paths, agent-first:
+ *   greenloop confirm                  → interactive: by = "human"
+ *   greenloop confirm --delegated <id> → autonomous/agent-led run pre-authorized
+ *                                         by <id> (launch token, policy ref,
+ *                                         orchestrator id): by = "delegated:<id>"
+ * Either way it refuses to ratify an incomplete spec (no goal or no DONE WHEN),
+ * echoes both, and records goal_confirmed/by/at so a reviewer can see HOW the
+ * goal was ratified. Exit 0 = confirmed · 1 = incomplete spec · 3 = no/invalid state.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+function confirm(ctx: Ctx, by: string): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP confirm: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP confirm: .greenloop/state.json is not valid JSON."); return 3 }
+  const goal = typeof state.goal === "string" ? state.goal.trim() : ""
+  const dw = typeof state?.convergence?.done_when === "string" ? state.convergence.done_when.trim() : ""
+  if (!goal || !dw) {
+    console.error("GREENLOOP confirm: cannot ratify an incomplete spec.")
+    if (!goal) console.error("  • state.goal is empty — write the goal first (Phase 2).")
+    if (!dw) console.error("  • convergence.done_when is empty — write a falsifiable DONE WHEN first (Section C).")
+    return 1
+  }
+  console.log(by === "human" ? "Ratify this spec (human):" : `Ratify this spec (${by}):`)
+  console.log("  goal:      " + goal)
+  console.log("  done_when: " + dw)
+  state.goal_confirmed = true
+  state.goal_confirmed_by = by
+  state.goal_confirmed_at = new Date().toISOString()
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
+  console.log(`GREENLOOP: goal_confirmed = true (by ${by}) — the pre-edit gate will now allow project edits.`)
+  return 0
+}
+
+/* ── ALLOW — `greenloop allow <class>` authorizes a hazard class (gate B) ────
+ * Reversible work never needs this; irreversible/hazardous shell actions stay
+ * blocked until the authority allows their class. Like confirm, it records
+ * provenance (human vs delegated) and is the irreversibility checkpoint.
+ * Classes: force-push, destructive-fs, sql-destructive, deploy-publish,
+ * privileged (or "*" to allow all — discouraged). */
+const HAZARD_CLASSES = ["force-push", "destructive-fs", "sql-destructive", "deploy-publish", "privileged", "*"]
+
+function allow(ctx: Ctx, cls: string, by: string): number {
+  if (!cls) { console.error("usage: greenloop allow <class> [--delegated <id>]   classes: " + HAZARD_CLASSES.join(", ")); return 2 }
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP allow: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP allow: .greenloop/state.json is not valid JSON."); return 3 }
+  if (HAZARD_CLASSES.indexOf(cls) < 0)
+    console.error("GREENLOOP allow: note — '" + cls + "' is not a known class (" + HAZARD_CLASSES.join(", ") + "); authorizing it anyway.")
+  if (!Array.isArray(state.hazards_allowed)) state.hazards_allowed = []
+  if (state.hazards_allowed.indexOf(cls) < 0) state.hazards_allowed.push(cls)
+  state.hazards_allowed_by = by
+  writeFileSync(statePath, JSON.stringify(state, null, 2) + "\n")
+  console.log("GREENLOOP: authorized hazard class '" + cls + "' (by " + by + "). Allowed: [" + state.hazards_allowed.join(", ") + "]")
+  return 0
+}
+
+/* ── CHECK — `greenloop check` is the slip tripwire (gate C) ─────────────────
+ * A model-independent slip score from state (it never asks the model "are you
+ * ok?"; it watches behavior): reopened GREENs, fix-attempt thrash, unresolved
+ * failures. When it trips it names the ONE intervention to do — route attention,
+ * don't let the loop spin. Exit 0 = fine · 1 = slipping · 3 = no/invalid state. */
+
+function slipReport(state: any): { score: number; signals: string[]; action: string } {
+  const v = state.verification ?? {}
+  const claims = Number(v.green_claims ?? 0)
+  const indep = !!v.last_independent_check
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  const maxAttempts = failures.reduce((m, f) => Math.max(m, Number(f?.attempts ?? 0)), 0)
+  const open = failures.filter(f => f && f.error && !f.resolution)
+  let score = 0
+  const signals: string[] = []
+  if (claims >= 1) { score += claims * 2; signals.push(`green_claims=${claims} (reopened GREEN — drift)`) }
+  if (claims >= 2 && !indep) { score += 3; signals.push("disputed GREEN without an independent verdict") }
+  if (maxAttempts >= 3) { score += maxAttempts; signals.push(`one error has survived ${maxAttempts} fix attempts (thrash)`) }
+  if (open.length) { score += open.length; signals.push(`${open.length} unresolved failure(s)`) }
+  let action = ""
+  if (claims >= 2 && !indep) action = "STOP self-assessing — get an INDEPENDENT verdict (spawn the greenloop-judge subagent or a different model) before any further GREEN claim, and record verification.last_independent_check."
+  else if (maxAttempts >= 5) action = `Revert to the last checkpoint and take a structurally different approach — the same error survived ${maxAttempts} attempts.`
+  else if (maxAttempts >= 3) { const f = failures.find(x => Number(x?.attempts ?? 0) >= 3); action = `Stop editing and write a root-cause analysis for ${f?.step ?? "the failing step"} naming the wrong assumption (Phase 8 3-attempt guard).` }
+  else if (open.length) action = `Resolve the failure at ${open[0].step ?? "?"}, or record it as found-not-fixed.`
+  else if (signals.length) action = "Accumulated drift with no single dominant cause — do a fresh-eyes review of the result (greenloop-judge or a different model) before claiming GREEN."
+  return { score, signals, action }
+}
+
+function check(ctx: Ctx): number {
+  const statePath = join(ctx.root, ".greenloop", "state.json")
+  if (!existsSync(statePath)) { console.error("GREENLOOP check: no .greenloop/state.json — run Phase 1 (TRIAGE) first."); return 3 }
+  let state: any
+  try { state = JSON.parse(readFileSync(statePath, "utf8")) }
+  catch { console.error("GREENLOOP check: .greenloop/state.json is not valid JSON."); return 3 }
+  const THRESHOLD = 4
+  const { score, signals, action } = slipReport(state)
+  if (score < THRESHOLD) {
+    console.log(`GREENLOOP check: slip score ${score} (< ${THRESHOLD}) — no intervention needed.${signals.length ? " Signals: " + signals.join("; ") : ""}`)
+    return 0
+  }
+  console.error(`GREENLOOP check: SLIPPING — slip score ${score} (>= ${THRESHOLD}).`)
+  for (const s of signals) console.error("  • " + s)
+  if (action) console.error("Do ONE thing now: " + action)
+  return 1
+}
+
+/* ════════════════════════════════════════════════════════════════════════
  * ENTRY
  * ════════════════════════════════════════════════════════════════════════ */
 
-interface Flags { headless: boolean; list: boolean; yes: boolean; agents: string[] | null }
+interface Flags { headless: boolean; list: boolean; yes: boolean; agents: string[] | null; all: boolean }
 
 function main() {
   const argv = process.argv.slice(2)
@@ -2224,15 +2465,39 @@ function main() {
     dryRun: has("--dry-run"),
     hooks: !has("--no-hooks"),
   }
-  // Subcommand: `greenloop verify` — state-aware GREEN check (see VERIFY).
+  // Subcommands: `greenloop verify` (GREEN check) · `greenloop confirm` (ratify spec).
   if (argv[0] === "verify") process.exit(verify(ctx, has("--quiet")))
+  if (argv[0] === "confirm") {
+    let by = "human"
+    const eq = val("--delegated=")
+    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
+    else if (has("--delegated")) {
+      const nxt = argv[argv.indexOf("--delegated") + 1]
+      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
+    }
+    process.exit(confirm(ctx, by))
+  }
+  if (argv[0] === "allow") {
+    const cls = argv[1] && !argv[1].startsWith("--") ? argv[1] : ""
+    let by = "human"
+    const eq = val("--delegated=")
+    if (eq !== undefined) by = `delegated:${eq || "unspecified"}`
+    else if (has("--delegated")) {
+      const nxt = argv[argv.indexOf("--delegated") + 1]
+      by = `delegated:${nxt && !nxt.startsWith("--") ? nxt : "unspecified"}`
+    }
+    process.exit(allow(ctx, cls, by))
+  }
+  if (argv[0] === "check") process.exit(check(ctx))
   const flags: Flags = {
     headless: has("--headless") || has("--list") || !process.stdout.isTTY,
     list: has("--list"),
     yes: has("--yes"),
-    agents: val("--agents=")?.split(",").map(s => s.trim()) ?? null,
+    agents: val("--agents=")?.split(",").map(s => s.trim()).filter(Boolean) ?? null,
+    all: has("--all"),
   }
-  if (flags.headless) headless(ctx, flags)
+  // Explicit selection flags imply a non-interactive run.
+  if (flags.headless || flags.agents || flags.all) headless(ctx, flags)
   else tui(ctx).catch(err => {
     console.error("TUI unavailable (" + (err?.message ?? err) + ") — falling back to headless.\n")
     headless(ctx, flags)

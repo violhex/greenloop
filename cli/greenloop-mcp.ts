@@ -73,6 +73,8 @@ function gateResult(dir: string, filePath: string): { allow: boolean; reason: st
   const doneWhen = state?.convergence?.done_when
   if (typeof doneWhen !== "string" || doneWhen.trim() === "")
     return { allow: false, reason: "convergence.done_when is empty — no edit from ORBITING (Section C). Reach LOCK_IN: write a falsifiable DONE WHEN first" }
+  if (state.goal_confirmed !== true)
+    return { allow: false, reason: "goal is not ratified — confirm the goal + DONE WHEN by an authority before editing. Interactive: 'greenloop confirm'. Autonomous/agent-led: 'greenloop confirm --delegated <id>'" }
   const designDir = join(dir, ".greenloop", "design")
   if (existsSync(designDir)) {
     const lock = join(designDir, "intent-lock.md")
@@ -90,13 +92,24 @@ function stateSummary(dir: string): string {
   const v = state.verification ?? {}
   const dod: any[] = Array.isArray(state.dod) ? state.dod : []
   const passed = dod.filter(d => d && d.status === "pass").length
+  const failures: any[] = Array.isArray(state.failures) ? state.failures : []
+  const maxAtt = failures.reduce((m, f) => Math.max(m, Number(f?.attempts ?? 0)), 0)
+  const openF = failures.filter(f => f && f.error && !f.resolution).length
+  const claims = Number(v.green_claims ?? 0)
+  let slip = 0
+  if (claims >= 1) slip += claims * 2
+  if (claims >= 2 && !v.last_independent_check) slip += 3
+  if (maxAtt >= 3) slip += maxAtt
+  slip += openF
   return [
     `phase:            ${state.phase ?? "?"}`,
     `convergence:      ${c.state ?? "?"}`,
+    `goal_confirmed:   ${state.goal_confirmed === true ? "yes (by " + (state.goal_confirmed_by || "unknown") + ")" : "NO — gate closed until 'greenloop confirm' (or '--delegated <id>')"}`,
     `done_when:        ${c.done_when ? JSON.stringify(c.done_when) : "(empty)"}`,
     `DoD progress:     ${passed}/${dod.length} pass`,
     `green_claims:     ${v.green_claims ?? 0}  (reopened GREEN claims — drift signal)`,
     `independent_check: ${v.last_independent_check || "(none)"}`,
+    `slip score:       ${slip} ${slip >= 4 ? "(SLIPPING — run 'greenloop check' for the one intervention)" : "(ok)"}`,
   ].join("\n")
 }
 
