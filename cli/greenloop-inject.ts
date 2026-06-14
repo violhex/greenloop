@@ -2171,6 +2171,7 @@ function headless(ctx: Ctx, flags: Flags) {
     console.log(`  --agents=<ids>   bind specific agents (e.g. --agents=cursor,claude-code; ids above)`)
     console.log(`  --all            bind every detected agent (●) in this environment`)
     if (flags.agents) console.log(`(--agents matched no known target id; run --list to see valid ids)`)
+    process.exitCode = 2
     return
   }
   const plan = buildPlan(ctx, scans)
