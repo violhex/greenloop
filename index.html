@@ -29,6 +29,7 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth;background:var(--paper);color:var(--ink);text-rendering:optimizeLegibility}
+  [id]{scroll-margin-top:96px}
   body{
     min-height:100dvh;
     font-family:var(--sans);
@@ -143,11 +144,11 @@
     padding:24px;
   }
   .flow ol{list-style:none;counter-reset:flow;display:grid;gap:14px}
-  .flow li{counter-increment:flow;display:grid;grid-template-columns:42px 1fr;gap:14px;align-items:start;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .flow li{counter-increment:flow;display:grid;grid-template-columns:42px 1fr;column-gap:14px;row-gap:3px;align-items:start;padding-bottom:14px;border-bottom:1px solid var(--line)}
   .flow li:last-child{border-bottom:0;padding-bottom:0}
-  .flow li::before{content:"0" counter(flow);font-family:var(--mono);font-size:12px;color:var(--accent)}
+  .flow li::before{content:"0" counter(flow);grid-row:1 / 3;font-family:var(--mono);font-size:12px;color:var(--accent)}
   .flow b{display:block;grid-column:2;color:var(--ink);font-size:15px}
-  .flow span{display:block;grid-column:2;color:var(--ink-dim);font-size:14px;margin-top:-12px}
+  .flow span{display:block;grid-column:2;color:var(--ink-dim);font-size:14px}
 
   .proof-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:28px}
   .proof-panel,.metric-panel{
@@ -200,8 +201,8 @@
   .tree b{color:var(--ink);font-weight:600}
   .tree i{color:var(--ink-faint);font-style:normal}
 
-  .agent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--line);border:1px solid var(--line)}
-  .agent-grid div{background:var(--paper);padding:16px;font-family:var(--mono);font-size:13px}
+  .agent-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .agent-grid div{background:var(--paper);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px;font-family:var(--mono);font-size:13px}
   .agent-grid span{display:block;margin-top:5px;color:var(--ink-faint);font-family:var(--sans);font-size:13px}
 
   .run-log{max-width:100%;font-family:var(--mono);font-size:13px;line-height:2.05;overflow-x:auto;white-space:nowrap;background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:22px}
@@ -240,6 +241,9 @@
     h1{font-size:58px}
     .section-head{display:block}
     .section-head .sub{margin-top:16px}
+  }
+  @media (max-width:1100px){
+    .quick-grid{grid-template-columns:1fr}
   }
   @media (max-width:680px){
     body{font-size:16px;background-size:48px 48px}
@@ -406,24 +410,30 @@
   </section>
 
   <section aria-labelledby="quickstart-title">
-    <div class="shell quick-grid">
-      <div>
-        <p class="label">Quickstart</p>
-        <h2 id="quickstart-title">Three steps to green.</h2>
+    <div class="shell">
+      <div class="section-head">
+        <div>
+          <p class="label">Quickstart</p>
+          <h2 id="quickstart-title">Three steps to green.</h2>
+        </div>
+        <p class="sub">Install the workflow, bind it to the agents already in your repo, then make completion observable.</p>
+      </div>
+
+      <div class="quick-grid">
         <div class="steps">
           <div class="step"><div><h3>Install</h3><p>Run the curl command. It fetches the workflow files, verifies checksums, and installs a <code>greenloop</code> command.</p></div></div>
           <div class="step"><div><h3>Bind your agents</h3><p>Run <code>greenloop</code> inside a repo. It detects your agent stack and writes native bindings without clobbering owned files.</p></div></div>
           <div class="step"><div><h3>Give the agent a task</h3><p>Phase 1 initializes <code>.greenloop/</code>. The loop runs until the harness exits 0 and the worklog explains why.</p></div></div>
         </div>
-      </div>
 
-      <pre class="tree">repo/
+        <pre class="tree">repo/
 |-- <b>GREENLOOP.md</b>                  <i>contract, S/C/R, phases 0-10</i>
 |-- <b>GREENLOOP-APPENDICES.md</b>       <i>orchestration and role library</i>
 |-- <b>greenloop.state.schema.json</b>   <i>state template</i>
 |-- <b>GREENLOOP-PROFILE-DESIGN.md</b>   <i>design domain profile</i>
 |-- <b>AGENTS.md</b>                     <i>universal binding</i>
 `-- <b>.greenloop/</b>                   <i>state / plan / memory / worklog</i></pre>
+      </div>
     </div>
   </section>
 
