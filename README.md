@@ -2,10 +2,17 @@
 
 **Done is an exit code.**
 
-GREENLOOP is a state-machine execution workflow you hand to any AI coding agent —
-Claude Code, Cursor, Windsurf, Aider, local models. It makes the agent persist its
-state, converge before it edits, test its own assumptions, and refuse to call
-anything finished until a verification harness says so.
+Spec tools plan. **GREENLOOP proves done.**
+
+GREENLOOP is a verification layer and state-machine execution workflow you hand
+to any AI coding agent — Claude Code, Cursor, Windsurf, Aider, local models. It
+makes the agent persist its state, converge before it edits, test its own
+assumptions, and refuse to call anything finished until a verification harness
+says so.
+
+The doctrine behind it is reduction: AI makes expansion effortless, but expansion
+eventually becomes fog. GREENLOOP forces agent work back into reality as state,
+evidence, and a finite done-when.
 
 ```sh
 curl -fsSL https://greenloop.violhex.workers.dev/install.sh | sh
@@ -24,6 +31,9 @@ both: `--all` · remove: `--uninstall`
 
 The full contract, the ten phases, and GREEN itself live in
 [`workflow/GREENLOOP.md`](workflow/GREENLOOP.md).
+
+The deeper thesis lives in [`docs/REDUCTION-DOCTRINE.md`](docs/REDUCTION-DOCTRINE.md).
+The proof surface lives in [`docs/GREENLOOP-PROOF.md`](docs/GREENLOOP-PROOF.md).
 
 ## Repository layout
 
@@ -44,7 +54,9 @@ greenloop/
 │   ├── greenloop-inject.test.ts      unit/integration tests for the injector
 │   └── greenloop-mcp.ts              portable MCP server (verify / gate / state)
 └── docs/
-    └── DEPLOY.md    hosting, forking, and release process
+    ├── DEPLOY.md               hosting, forking, and release process
+    ├── GREENLOOP-PROOF.md      proof surface and honest evidence summary
+    └── REDUCTION-DOCTRINE.md   reduction thesis behind the workflow
 ```
 
 `cli/greenloop-inject.ts` is deliberately single-file: it embeds the `workflow/`
