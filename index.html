@@ -169,8 +169,18 @@
   .station{border-top:1px solid var(--line);padding-top:18px}
   .glyph{height:112px;border:1px solid var(--line);border-radius:8px;background:var(--paper-2);display:grid;place-items:center;margin-bottom:18px;position:relative;overflow:hidden}
   .glyph::before{content:"";position:absolute;inset:22px;border:1px solid var(--line-2);border-radius:6px}
-  .glyph i{width:42px;height:42px;border:1px solid var(--accent);border-radius:50%;display:block;position:relative}
+  .glyph i{width:42px;height:42px;border:1px solid var(--accent);border-radius:50%;display:block;position:relative;transition:transform .3s var(--ease)}
   .glyph i::after{content:"";position:absolute;width:8px;height:8px;border-radius:50%;right:-5px;top:22px;background:var(--ink-dim)}
+  .station:nth-child(1) .glyph i{transform:translate(-16px,2px)}
+  .station:nth-child(1) .glyph i::after{right:-5px;top:22px}
+  .station:nth-child(2) .glyph i{transform:translate(14px,-12px)}
+  .station:nth-child(2) .glyph i::after{right:13px;top:-5px}
+  .station:nth-child(3) .glyph i{transform:translate(-4px,15px)}
+  .station:nth-child(3) .glyph i::after{right:34px;top:14px}
+  .station:nth-child(4) .glyph i{transform:translate(18px,10px)}
+  .station:nth-child(4) .glyph i::after{right:4px;top:35px}
+  .station:nth-child(5) .glyph i{transform:translate(-12px,-14px)}
+  .station:nth-child(5) .glyph i::after{right:-5px;top:6px}
   .station h3{font-size:20px;margin-bottom:8px}
   .station p{color:var(--ink-dim);font-size:14px;line-height:1.55}
 
