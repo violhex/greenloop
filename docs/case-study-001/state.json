@@ -1,0 +1,128 @@
+{
+  "_doc": "GREENLOOP state — Case Study 001 run. Companion to GREENLOOP.md v2.4.0.",
+
+  "user_request": "We need to create Greenloop Case Study 001. Goal: choose a small real coding task, run it through Greenloop end to end, and produce a public proof artifact. Do not expand the concept. Reduce it into evidence.",
+  "goal": "Enforce the DEPLOY.md mirror invariant ('mirror any workflow change into the embedded payloads in cli/greenloop-inject.ts') with byte-comparison parity tests, so drift between workflow/ and the embedded constants fails the suite instead of relying on discipline.",
+  "goal_confirmed": true,
+  "goal_confirmed_by": "delegated:case-study-001-brief",
+  "scope_fence": "cli/greenloop-inject.test.ts (add tests only), .greenloop/ (state), docs/CASE-STUDY-001.md, README.md + index.html (link the case study only). NOT in scope: editing cli/greenloop-inject.ts, workflow/*, install.sh, SHA256SUMS, deleting legacy src/, any deploy.",
+  "hazards_allowed": [],
+  "constraints": [
+    "Add tests; do not modify the injector source or workflow payloads.",
+    "Match existing test-file style (node:test, double quotes, no semicolons).",
+    "README/site changes limited to linking the case study."
+  ],
+
+  "dod": [
+    { "id": "D1", "check": "4 new parity tests exist, each byte-comparing one embedded payload const to its workflow/ file (modulo leading/trailing whitespace)", "status": "pass", "evidence": "suite section 11 'embedded payload parity with workflow/': 4/4 pass at 2026-07-04T00:51Z" },
+    { "id": "D2", "check": "Falsifiability proven: a 1-byte mutation of workflow/GREENLOOP.md makes the parity test FAIL; restoring makes it PASS", "status": "pass", "evidence": "printf 'X' >> workflow/GREENLOOP.md → 88 pass 1 fail, 'GREENLOOP_CORE has drifted... First difference at line 808: on disk \"X\"'; restore → 89 pass 0 fail, git diff clean on workflow/" },
+    { "id": "D3", "check": "Full suite green: node --experimental-strip-types --test cli/greenloop-inject.test.ts → 89 tests, 0 fail (baseline was 85/85)", "status": "pass", "evidence": "2026-07-04T00:52Z: tests 89, pass 89, fail 0" },
+    { "id": "D4", "check": "docs/CASE-STUDY-001.md written (task, state, decisions, verification, outcome) and linked from README.md and index.html", "status": "pass", "evidence": "docs/CASE-STUDY-001.md + docs/case-study-001/{state.json,plan.md,worklog.md} snapshot; README links in intro + layout tree; index.html link in 'Get the files' section" }
+  ],
+
+  "assumptions": [
+    {
+      "assumption": "The test suite already enforces embedded-payload ↔ workflow/ parity somewhere",
+      "confidence": 0.3,
+      "evidence": ["grep 'workflow/' cli/greenloop-inject.test.ts → only version-string regex checks (sections 9–10)"],
+      "falsifier": "grep the test file for content comparison against workflow/ files",
+      "impact_if_false": "low",
+      "status": "falsified",
+      "validated_at": "2026-07-04T00:35Z"
+    },
+    {
+      "assumption": "The embedded payloads have drifted from workflow/ (naive extractor showed all 4 differing, embedded 72099 vs disk 45503 chars for GREENLOOP_CORE)",
+      "confidence": 0.6,
+      "evidence": [
+        "First diff-check run: DRIFT reported on all 4 constants",
+        "Suspicious pattern: every 'first diff' line ended in a stray backtick → checker bug hypothesis"
+      ],
+      "falsifier": "Fix the extractor to stop at an unescaped trailing backtick and unescape \\` \\${ \\\\, then re-compare",
+      "impact_if_false": "destroys_plan",
+      "status": "falsified",
+      "validated_at": "2026-07-04T00:42Z"
+    },
+    {
+      "assumption": "The existing extractConst helper in the test file can extract the workflow payload constants",
+      "confidence": 0.5,
+      "evidence": ["extractConst terminates only on a lone-backtick line; GREENLOOP_CORE et al. close with a trailing backtick on the last content line → it over-collects into subsequent constants"],
+      "falsifier": "Read extractConst; check termination condition against how the 4 payload constants close",
+      "impact_if_false": "medium",
+      "status": "falsified",
+      "validated_at": "2026-07-04T00:45Z"
+    },
+    {
+      "assumption": "Unescaping \\` then \\${ then \\\\ reproduces the exact on-disk bytes of all 4 workflow files",
+      "confidence": 0.9,
+      "evidence": ["Corrected checker: OK on all 4 pairs — GREENLOOP_CORE 45503, APPENDICES 6794, SCHEMA 1871, PROFILE_DESIGN 13037 chars, trim-equal"],
+      "falsifier": "Byte-compare after unescape; any mismatch falsifies",
+      "impact_if_false": "destroys_plan",
+      "status": "confirmed",
+      "validated_at": "2026-07-04T00:47Z"
+    }
+  ],
+
+  "phase": "REPORT",
+
+  "steps": [
+    { "id": "S1", "desc": "Append section 11 to cli/greenloop-inject.test.ts: extractPayload helper (unescaped-trailing-backtick termination + unescape) and 4 parity tests", "verify": "node --experimental-strip-types --test cli/greenloop-inject.test.ts → 89 pass 0 fail", "status": "done", "owner": "main" },
+    { "id": "S2", "desc": "Mutation check: append 1 byte to workflow/GREENLOOP.md, run suite, expect the GREENLOOP_CORE parity test to FAIL; restore file; expect green", "verify": "suite fails during mutation, passes after restore, git diff clean on workflow/", "status": "done", "owner": "main" },
+    { "id": "S3", "desc": "Write docs/CASE-STUDY-001.md; add one link in README.md and one in index.html", "verify": "file exists; README and index.html each reference CASE-STUDY-001.md", "status": "done", "owner": "main" }
+  ],
+
+  "failures": [
+    {
+      "step": "recon diff-check",
+      "error": "Naive extractor reported DRIFT on all 4 embedded payloads (phantom ~26KB drift)",
+      "attempts": 1,
+      "rca": "Extractor assumed the closing backtick sits on its own line (copied from test-file extractConst); the payload constants close with a trailing backtick on the last content line, so extraction ran past the const boundary into unrelated source",
+      "resolution": "Terminate extraction at an unescaped trailing backtick; unescape template-literal escapes. Re-run → all 4 pairs identical. Drift assumption falsified before any edit was made."
+    }
+  ],
+
+  "decisions": [
+    {
+      "what": "Chosen proof task: add embedded-payload parity tests",
+      "why": "DEPLOY.md states the mirror invariant but nothing enforces it — the suite only checks version strings. A parity test converts prose doctrine into a falsifiable check. Small, finite, real.",
+      "alternatives_rejected": "Delete legacy untracked src/ + root copies (housekeeping, no verification story); fix phantom payload drift (falsified — there is no drift); touch install.sh/SHA256SUMS (verified clean, sha256sum -c OK)",
+      "confidence": 0.9,
+      "made_at": "2026-07-04T00:48Z"
+    },
+    {
+      "what": "New extractPayload helper in the test file instead of modifying existing extractConst",
+      "why": "extractConst is load-bearing for 85 passing tests and its lone-backtick termination is correct for the hook/plugin constants it serves; changing it risks the existing suite for zero gain",
+      "alternatives_rejected": "Patch extractConst to handle both terminations (wider blast radius); export the constants from greenloop-inject.ts (source edit — out of scope fence)",
+      "confidence": 0.85,
+      "made_at": "2026-07-04T00:49Z"
+    }
+  ],
+
+  "blocked": [],
+
+  "budgets": {
+    "tool_calls": { "limit": 40, "used": 22 },
+    "judge_rounds": { "limit": 3, "used": 1 },
+    "mode": "normal"
+  },
+
+  "convergence": {
+    "state": "LOCK_IN",
+    "target": "Unenforced mirror invariant: embedded payload constants in cli/greenloop-inject.ts vs workflow/ files",
+    "done_when": "node --experimental-strip-types --test cli/greenloop-inject.test.ts exits 0 with 89 tests passing (4 new parity tests), AND a deliberate 1-byte mutation of workflow/GREENLOOP.md makes the suite fail, AND restoring the file returns it to green with workflow/ unchanged per git diff.",
+    "active_branches": ["parity-test"],
+    "parked_branches": [
+      "delete-legacy-src (untracked housekeeping, no proof value)",
+      "sha256sums-staleness (falsified: sha256sum -c passes)",
+      "fix-payload-drift (falsified: no drift exists)"
+    ]
+  },
+
+  "verification": {
+    "command": "cd /home/base/dev/greenloop && node --experimental-strip-types --test cli/greenloop-inject.test.ts",
+    "last_run": "2026-07-04T00:52Z",
+    "result": "89 tests, 89 pass, 0 fail (baseline 85; +4 parity tests)",
+    "green": true,
+    "green_claims": 1,
+    "last_independent_check": "mutation check 2026-07-04T00:51Z: 1-byte perturbation → 88 pass 1 fail; restore → 89 pass, workflow/ diff clean"
+  }
+}

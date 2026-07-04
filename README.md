@@ -34,6 +34,8 @@ The full contract, the ten phases, and GREEN itself live in
 
 The deeper thesis lives in [`docs/REDUCTION-DOCTRINE.md`](docs/REDUCTION-DOCTRINE.md).
 The proof surface lives in [`docs/GREENLOOP-PROOF.md`](docs/GREENLOOP-PROOF.md).
+A real end-to-end run, with its state artifacts, lives in
+[`docs/CASE-STUDY-001.md`](docs/CASE-STUDY-001.md).
 
 ## Repository layout
 
@@ -56,7 +58,9 @@ greenloop/
 └── docs/
     ├── DEPLOY.md               hosting, forking, and release process
     ├── GREENLOOP-PROOF.md      proof surface and honest evidence summary
-    └── REDUCTION-DOCTRINE.md   reduction thesis behind the workflow
+    ├── REDUCTION-DOCTRINE.md   reduction thesis behind the workflow
+    ├── CASE-STUDY-001.md       a real task run through GREENLOOP end to end
+    └── case-study-001/         the .greenloop state artifacts from that run
 ```
 
 `cli/greenloop-inject.ts` is deliberately single-file: it embeds the `workflow/`

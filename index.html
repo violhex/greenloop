@@ -205,9 +205,10 @@
   .agent-grid div{background:var(--paper);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px;font-family:var(--mono);font-size:13px}
   .agent-grid span{display:block;margin-top:5px;color:var(--ink-faint);font-family:var(--sans);font-size:13px}
 
-  .run-log{max-width:100%;font-family:var(--mono);font-size:13px;line-height:2.05;overflow-x:auto;white-space:nowrap;background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:22px}
-  .run-log div{border-bottom:1px solid var(--line)}
+  .run-log{max-width:100%;font-family:var(--mono);font-size:13px;line-height:2.05;background:var(--paper-2);border:1px solid var(--line);border-radius:8px;padding:22px}
+  .run-log div{border-bottom:1px solid var(--line);overflow-wrap:anywhere}
   .run-log div:last-child{border-bottom:0}
+  .run-log .t,.run-log .ph,.run-log .ok{white-space:nowrap}
   .run-log .t{color:var(--ink-faint)}
   .run-log .ph{color:var(--accent)}
   .run-log .ok{color:var(--accent);font-weight:700}
@@ -468,26 +469,35 @@
   </section>
 
   <section aria-labelledby="enforcement-title">
-    <div class="shell proof-grid">
-      <article class="proof-panel">
-        <p class="label">Enforcement</p>
-        <h2 id="enforcement-title">Instructions persuade. Hooks enforce.</h2>
-        <p class="sub">On Claude Code, Greenloop can install gates that do not depend on model obedience.</p>
-        <div class="check-list">
-          <div><strong>PreToolUse gate:</strong> file edits are blocked until <code>.greenloop/state.json</code> exists.</div>
-          <div><strong>Stop gate:</strong> the session cannot end while <code>scripts/verify.sh</code> exits non-zero.</div>
-          <div><strong>GREEN:</strong> every done item satisfied, every harness check passed, no known unresolved error in scope.</div>
+    <div class="shell">
+      <div class="section-head">
+        <div>
+          <p class="label">Enforcement</p>
+          <h2 id="enforcement-title">Instructions persuade. Hooks enforce.</h2>
         </div>
-      </article>
-      <div>
-        <p class="label">Example run</p>
-        <div class="run-log" role="img" aria-label="Example worklog ending in GREEN">
-          <div><span class="t">[00:00]</span> <span class="ph">PHASE 0 CONTRACT</span> read; State Law in effect</div>
-          <div><span class="t">[00:03]</span> <span class="ph">PHASE 2 SPEC</span> user_request stored; done-when falsifiable</div>
-          <div><span class="t">[00:10]</span> <span class="ph">PHASE 5 PLAN</span> each step has a verification hook</div>
-          <div><span class="t">[00:14]</span> <span class="ph">PHASE 7 HARNESS</span> scripts/verify.sh wired</div>
-          <div><span class="t">[00:41]</span> <span class="ph">PHASE 9 VERIFY</span> full harness clean</div>
-          <div><span class="t">[00:43]</span> <span class="ok">STATUS: GREEN / exit 0</span></div>
+        <p class="sub">On Claude Code, Greenloop can install gates that do not depend on model obedience.</p>
+      </div>
+
+      <div class="proof-grid">
+        <article class="proof-panel">
+          <h3>What the gates hold</h3>
+          <p class="sub">The hooks read the same state the workflow writes, and they fail closed.</p>
+          <div class="check-list">
+            <div>PreToolUse gate: file edits are blocked until .greenloop/state.json exists.</div>
+            <div>Stop gate: the session cannot end while scripts/verify.sh exits non-zero.</div>
+            <div>GREEN: every done item satisfied, every harness check passed, no known unresolved error in scope.</div>
+          </div>
+        </article>
+        <div>
+          <p class="label">Example run</p>
+          <div class="run-log" role="img" aria-label="Example worklog ending in GREEN">
+            <div><span class="t">[00:00]</span> <span class="ph">PHASE 0 CONTRACT</span> read; State Law in effect</div>
+            <div><span class="t">[00:03]</span> <span class="ph">PHASE 2 SPEC</span> user_request stored; done-when falsifiable</div>
+            <div><span class="t">[00:10]</span> <span class="ph">PHASE 5 PLAN</span> each step has a verification hook</div>
+            <div><span class="t">[00:14]</span> <span class="ph">PHASE 7 HARNESS</span> scripts/verify.sh wired</div>
+            <div><span class="t">[00:41]</span> <span class="ph">PHASE 9 VERIFY</span> full harness clean</div>
+            <div><span class="t">[00:43]</span> <span class="ok">STATUS: GREEN / exit 0</span></div>
+          </div>
         </div>
       </div>
     </div>
@@ -536,6 +546,7 @@
       </div>
 
       <div class="files">
+        <a href="docs/CASE-STUDY-001.md">docs/CASE-STUDY-001.md<small>A real task run through GREENLOOP end to end, with its state artifacts.</small></a>
         <a href="docs/GREENLOOP-PROOF.md">docs/GREENLOOP-PROOF.md<small>Verification wedge, evidence summary, and next proof artifact.</small></a>
         <a href="docs/REDUCTION-DOCTRINE.md">docs/REDUCTION-DOCTRINE.md<small>The reduction thesis behind the workflow.</small></a>
         <a href="workflow/GREENLOOP.md">workflow/GREENLOOP.md<small>The core workflow, contract, S/C/R, and phases 0-10.</small></a>

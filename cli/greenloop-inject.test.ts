@@ -867,3 +867,79 @@ describe("index.html VERSION", () => {
     assert.match(content, /GREENLOOP v2\.4\.0/)
   })
 })
+
+// ════════════════════════════════════════════════════════════════════════
+// 11. embedded payload ↔ workflow/ parity (DEPLOY.md mirror invariant)
+// ════════════════════════════════════════════════════════════════════════
+
+/** Extract an embedded payload const and undo template-literal escaping.
+ *  Unlike extractConst above, the payload constants close with a trailing
+ *  backtick at the end of the last content line (not a lone-backtick line),
+ *  so termination is "line ends with an unescaped backtick". */
+function extractPayload(source: string, name: string): string {
+  const lines = source.split("\n")
+  const startPrefix = `const ${name} = \``
+  let startIdx = -1
+  let firstLineRemainder = ""
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith(startPrefix)) {
+      startIdx = i
+      firstLineRemainder = lines[i].slice(startPrefix.length)
+      break
+    }
+  }
+  if (startIdx === -1) throw new Error(`Could not find ${name} in source`)
+  const collected: string[] = [firstLineRemainder]
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (lines[i] === "`") break
+    if (/(?<!\\)`$/.test(lines[i])) {
+      collected.push(lines[i].slice(0, -1))
+      break
+    }
+    collected.push(lines[i])
+  }
+  return collected
+    .join("\n")
+    .replace(/\\`/g, "`")
+    .replace(/\\\$\{/g, "${")
+    .replace(/\\\\/g, "\\")
+}
+
+/** First line number (1-based) where two strings' lines differ, with both lines. */
+function firstDiffLine(a: string, b: string): string {
+  const aL = a.split("\n")
+  const bL = b.split("\n")
+  for (let i = 0; i < Math.max(aL.length, bL.length); i++) {
+    if (aL[i] !== bL[i]) {
+      return `line ${i + 1}:\n  embedded: ${JSON.stringify(aL[i] ?? "<missing>")}\n  on disk:  ${JSON.stringify(bL[i] ?? "<missing>")}`
+    }
+  }
+  return "no line-level diff (whitespace-only difference)"
+}
+
+describe("embedded payload parity with workflow/", () => {
+  const PAIRS: Array<[string, string]> = [
+    ["GREENLOOP_CORE", "workflow/GREENLOOP.md"],
+    ["GREENLOOP_APPENDICES", "workflow/GREENLOOP-APPENDICES.md"],
+    ["GREENLOOP_SCHEMA", "workflow/greenloop.state.schema.json"],
+    ["GREENLOOP_PROFILE_DESIGN", "workflow/GREENLOOP-PROFILE-DESIGN.md"],
+  ]
+
+  for (const [constName, filePath] of PAIRS) {
+    test(`${constName} matches ${filePath} byte-for-byte`, () => {
+      const embedded = extractPayload(SOURCE, constName).trim()
+      const onDisk = readFileSync(
+        new URL(`../${filePath}`, import.meta.url),
+        "utf8",
+      ).trim()
+      assert.ok(
+        embedded === onDisk,
+        `${constName} has drifted from ${filePath} ` +
+          `(embedded ${embedded.length} chars, on disk ${onDisk.length} chars).\n` +
+          `DEPLOY.md requires workflow/ edits to be mirrored into the embedded ` +
+          `payloads in cli/greenloop-inject.ts.\nFirst difference at ` +
+          firstDiffLine(embedded, onDisk),
+      )
+    })
+  }
+})
